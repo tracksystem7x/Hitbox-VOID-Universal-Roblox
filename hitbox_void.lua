@@ -31,16 +31,18 @@ local ORBITAR = false
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
+local DELAY_AUTOGRAB = 0.06
+local DISTANCIA_AUTOGRAB = 14
+local AUTOGRAB_SO_ALVO_PERTO = false
+
 local WALKSPEED_BASE = 16
-local DISTANCIA_PUXAO_GRAB = 8
-local DURACAO_RETORNO_GRAB = 1.35
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local ANTI_RAGDOLL_PADRAO_ATIVO = false
 local ANTI_GRAB_RAG_PADRAO_ATIVO = false
 local DEATH_TP_PADRAO_ATIVO = false
 local NO_SLOW_PADRAO_ATIVO = false
-local ANTI_GRAB_PADRAO_ATIVO = false
+local AUTO_GRAB_PADRAO_ATIVO = false
 local NO_ANIMATION_PADRAO_ATIVO = false
 local HUD_LOSANGO_PADRAO_VISIVEL = true
 local SPEED_CFRAME_PADRAO_ATIVO = false
@@ -73,7 +75,7 @@ local antiRagdollAtivo = ANTI_RAGDOLL_PADRAO_ATIVO
 local antiGrabRagAtivo = ANTI_GRAB_RAG_PADRAO_ATIVO
 local deathTpAtivo = DEATH_TP_PADRAO_ATIVO
 local noSlowAtivo = NO_SLOW_PADRAO_ATIVO
-local antiGrabAtivo = ANTI_GRAB_PADRAO_ATIVO
+local autoGrabAtivo = AUTO_GRAB_PADRAO_ATIVO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
 local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
@@ -93,11 +95,6 @@ local animConexoes = {}
 local ultimoEspecialTick = 0
 local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
-local ultimaPosicaoSeguraQuadra = nil
-local posicaoAnteriorQuadra = nil
-local destinoRetornoTravado = nil
-local retornoGrabAte = 0
-local ultimoLogGrab = 0
 
 local function getGuiParent()
 	local ok, res = pcall(function()
@@ -358,10 +355,6 @@ end
 
 local function conectarMonitorMorte(char)
 	morteRegistradaNestaVida = false
-	ultimaPosicaoSeguraQuadra = nil
-	posicaoAnteriorQuadra = nil
-	destinoRetornoTravado = nil
-	retornoGrabAte = 0
 	if not char then return end
 
 	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
@@ -450,136 +443,6 @@ local function aplicarNoSlow()
 			hum.WalkSpeed = WALKSPEED_BASE
 		end
 	end)
-end
-
--- ==========================================
--- ANTI GRAB (RETORNA PARA A POSICAO DA QUADRA AO SER PUXADO/AGRADO)
--- ==========================================
-local function haJogadorPerto(meuPos, raio)
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			local _, r = getCharAndRoot(plr)
-			if r and (r.Position - meuPos).Magnitude <= raio then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function temSinalDeGrabNoPersonagem(char, hum)
-	if hum and hum.PlatformStand then
-		return true
-	end
-	for _, desc in ipairs(char:GetDescendants()) do
-		if desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") or desc:IsA("AlignPosition") or desc:IsA("WeldConstraint") then
-			local low = desc.Name:lower()
-			if low:find("grab") or low:find("catch") or low:find("hold") or low:find("room") or low:find("tp") or low:find("arena") then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function forcarRetornoQuadra(root, hum, destino)
-	pcall(function()
-		if hum and hum.Sit then
-			hum.Sit = false
-		end
-		if hum and hum.PlatformStand then
-			hum.PlatformStand = false
-		end
-		for _, desc in ipairs(root.Parent:GetDescendants()) do
-			if desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") or desc:IsA("AlignPosition") then
-				local low = desc.Name:lower()
-				if low:find("grab") or low:find("catch") or low:find("hold") or low:find("throw") or low:find("launch") then
-					desc:Destroy()
-				end
-			elseif desc:IsA("WeldConstraint") or desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") then
-				local low = desc.Name:lower()
-				if low:find("grab") or low:find("catch") or low:find("hold") or low:find("ragdoll") then
-					desc.Enabled = false
-				end
-			end
-		end
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-		root.RotVelocity = Vector3.zero
-		root.CFrame = destino
-	end)
-end
-
-local function escolherDestinoRetorno(posAtual)
-	local candidatos = {}
-	if posicaoAnteriorQuadra then
-		table.insert(candidatos, posicaoAnteriorQuadra)
-	end
-	if ultimaPosicaoSeguraQuadra then
-		table.insert(candidatos, ultimaPosicaoSeguraQuadra)
-	end
-
-	local melhorDestino = nil
-	local maiorDistanciaDaSala = -1
-	for _, cand in ipairs(candidatos) do
-		local dist = (cand.Position - posAtual.Position).Magnitude
-		if dist >= DISTANCIA_PUXAO_GRAB and dist > maiorDistanciaDaSala then
-			maiorDistanciaDaSala = dist
-			melhorDestino = cand
-		end
-	end
-
-	return melhorDestino or ultimaPosicaoSeguraQuadra or posicaoAnteriorQuadra
-end
-
-local function aplicarAntiGrab()
-	if not antiGrabAtivo then
-		retornoGrabAte = 0
-		destinoRetornoTravado = nil
-		return
-	end
-
-	local char, root, hum = getCharAndRoot(LocalPlayer)
-	if not char or not root or not hum then return end
-
-	local agora = os.clock()
-	local posAtual = root.CFrame
-
-	if agora < retornoGrabAte and destinoRetornoTravado then
-		forcarRetornoQuadra(root, hum, destinoRetornoTravado)
-		return
-	else
-		destinoRetornoTravado = nil
-	end
-
-	if ultimaPosicaoSeguraQuadra then
-		local saltoDist = (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude
-		local sinalGrab = temSinalDeGrabNoPersonagem(char, hum)
-
-		if saltoDist >= DISTANCIA_PUXAO_GRAB or (sinalGrab and haJogadorPerto(ultimaPosicaoSeguraQuadra.Position, 20)) then
-			destinoRetornoTravado = escolherDestinoRetorno(posAtual)
-			retornoGrabAte = agora + DURACAO_RETORNO_GRAB
-			if destinoRetornoTravado then
-				forcarRetornoQuadra(root, hum, destinoRetornoTravado)
-			end
-			if (agora - ultimoLogGrab) > 1 then
-				ultimoLogGrab = agora
-				print("[Hitbox VOID] Anti Grab disparou! Salto:", math.floor(saltoDist), "Sinal:", tostring(sinalGrab))
-			end
-			return
-		end
-	end
-
-	local estado = hum:GetState()
-	if not hum.Sit
-		and not hum.PlatformStand
-		and estado ~= Enum.HumanoidStateType.Physics
-		and root.AssemblyLinearVelocity.Magnitude < 45 then
-		if not ultimaPosicaoSeguraQuadra or (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude >= 3 then
-			posicaoAnteriorQuadra = ultimaPosicaoSeguraQuadra
-			ultimaPosicaoSeguraQuadra = posAtual
-		end
-	end
 end
 
 -- ==========================================
@@ -1130,14 +993,14 @@ local function criarPainelHitbox()
 	)
 	btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local btnAntiGrab = criarBotaoPadrao(
+	local btnAutoGrab = criarBotaoPadrao(
 		pagCombat,
-		antiGrabAtivo and "Anti Grab: ON" or "Anti Grab: OFF",
+		autoGrabAtivo and "AutoGrab: ON" or "AutoGrab: OFF",
 		UDim2.new(0, 8, 0, 150),
 		UDim2.new(1, -16, 0, 22),
 		11
 	)
-	btnAntiGrab.BackgroundColor3 = antiGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnAutoGrab.BackgroundColor3 = autoGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
 	local btnHit = criarBotaoPadrao(
 		pagCombat,
@@ -1358,10 +1221,10 @@ local function criarPainelHitbox()
 		btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
-	btnAntiGrab.MouseButton1Click:Connect(function()
-		antiGrabAtivo = not antiGrabAtivo
-		btnAntiGrab.Text = antiGrabAtivo and "Anti Grab: ON" or "Anti Grab: OFF"
-		btnAntiGrab.BackgroundColor3 = antiGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnAutoGrab.MouseButton1Click:Connect(function()
+		autoGrabAtivo = not autoGrabAtivo
+		btnAutoGrab.Text = autoGrabAtivo and "AutoGrab: ON" or "AutoGrab: OFF"
+		btnAutoGrab.BackgroundColor3 = autoGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -1412,6 +1275,45 @@ end
 criarPainelHitbox()
 atualizarVisual(ativo)
 sincronizarNoAnimation()
+
+local function haAlvoValidoPertoParaGrab(meuRoot)
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
+			local _, r = getCharAndRoot(plr)
+			if r and (r.Position - meuRoot.Position).Magnitude <= DISTANCIA_AUTOGRAB then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function dispararTeclaGrab()
+	ultimoEspecialTick = os.clock()
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(true, TECLA_ESPECIAL, false, game)
+		task.wait(0.01)
+		VirtualInputManager:SendKeyEvent(false, TECLA_ESPECIAL, false, game)
+	end)
+end
+
+task.spawn(function()
+	while true do
+		if autoGrabAtivo and not UserInputService:GetFocusedTextBox() then
+			local _, meuRoot = getCharAndRoot(LocalPlayer)
+			local podeDisparar = meuRoot ~= nil
+			if podeDisparar and AUTOGRAB_SO_ALVO_PERTO then
+				podeDisparar = haAlvoValidoPertoParaGrab(meuRoot)
+			end
+			if podeDisparar then
+				dispararTeclaGrab()
+			end
+			task.wait(DELAY_AUTOGRAB)
+		else
+			task.wait(0.05)
+		end
+	end
+end)
 
 task.spawn(function()
 	while true do
@@ -1533,19 +1435,16 @@ pcall(function()
 end)
 RunService.RenderStepped:Connect(function()
 	aplicarFocoNoAlvo()
-	aplicarAntiGrab()
 end)
 RunService.Stepped:Connect(function()
 	aplicarFocoNoAlvo()
 	aplicarNoSlow()
-	aplicarAntiGrab()
 	aplicarAntiRagdoll()
 	aplicarAntiGrabRag()
 end)
 RunService.Heartbeat:Connect(function(dt)
 	aplicarFocoNoAlvo()
 	aplicarNoSlow()
-	aplicarAntiGrab()
 	aplicarAntiRagdoll()
 	aplicarAntiGrabRag()
 	aplicarSpeedCFrame(dt)
@@ -1562,4 +1461,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Anti Grab reforçado no RenderStepped!")
+print("[Hitbox VOID] Carregado com AutoGrab!")
