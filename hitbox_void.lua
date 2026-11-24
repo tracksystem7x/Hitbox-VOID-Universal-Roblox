@@ -33,6 +33,11 @@ local DELAY_CLIQUE = 0.001
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local NO_ANIMATION_PADRAO_ATIVO = false
+local SPEED_CFRAME_PADRAO_ATIVO = false
+local SPEED_CFRAME_PADRAO = 24 -- Studs por segundo via CFrame
+local SPEED_CFRAME_MIN = 8
+local SPEED_CFRAME_MAX = 80
+
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
 local HITBOX_MAX_SLIDER = 27
@@ -54,6 +59,8 @@ end
 local ativo = false
 local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
+local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
+local speedCFrameValor = SPEED_CFRAME_PADRAO
 local alvoAtual = nil
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
@@ -340,6 +347,61 @@ local function getCharAndRoot(plr)
 	return char, root, hum
 end
 
+-- ==========================================
+-- SPEED POR CFRAME (SEM ALTERAR WALKSPEED)
+-- ==========================================
+local function obterDirecaoMovimentoCFrame(hum)
+	local dir = hum and hum.MoveDirection or Vector3.zero
+	local plano = Vector3.new(dir.X, 0, dir.Z)
+	if plano.Magnitude > 0.01 then
+		return plano.Unit
+	end
+
+	local cam = workspace.CurrentCamera
+	if not cam then return Vector3.zero end
+
+	local forward = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+	local right = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+	if forward.Magnitude > 0.001 then forward = forward.Unit end
+	if right.Magnitude > 0.001 then right = right.Unit end
+
+	local move = Vector3.zero
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
+		move += forward
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
+		move -= forward
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
+		move += right
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
+		move -= right
+	end
+
+	if move.Magnitude > 0.01 then
+		return move.Unit
+	end
+	return Vector3.zero
+end
+
+local function aplicarSpeedCFrame(dt)
+	if not speedCFrameAtivo then return end
+	if UserInputService:GetFocusedTextBox() then return end
+
+	local char, meuRoot, hum = getCharAndRoot(LocalPlayer)
+	if not char or not meuRoot or not hum then return end
+	if hum.Sit then return end
+
+	local dir = obterDirecaoMovimentoCFrame(hum)
+	if dir.Magnitude > 0.01 then
+		local passo = dir * (speedCFrameValor * math.clamp(dt, 0.001, 0.05))
+		pcall(function()
+			meuRoot.CFrame = meuRoot.CFrame + passo
+		end)
+	end
+end
+
 local function splitListaNomes(texto)
 	local lista = {}
 	if not texto or texto:match("^%s*$") then
@@ -522,8 +584,8 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 188, 0, 288)
-	frame.Position = UDim2.new(1, -202, 1, -344)
+	frame.Size = UDim2.new(0, 188, 0, 326)
+	frame.Position = UDim2.new(1, -202, 1, -382)
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
 	frame.Active = true
@@ -583,9 +645,22 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnNoAnim).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnNoAnim, 1)
 
+	local btnSpeed = Instance.new("TextButton")
+	btnSpeed.Size = UDim2.new(1, -16, 0, 24)
+	btnSpeed.Position = UDim2.new(0, 8, 0, 112)
+	btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
+	btnSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btnSpeed.Font = Enum.Font.GothamBold
+	btnSpeed.TextSize = 11
+	btnSpeed.BorderSizePixel = 0
+	btnSpeed.Parent = frame
+	Instance.new("UICorner", btnSpeed).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnSpeed, 1)
+
 	local btnHit = Instance.new("TextButton")
 	btnHit.Size = UDim2.new(0.5, -10, 0, 24)
-	btnHit.Position = UDim2.new(0, 8, 0, 113)
+	btnHit.Position = UDim2.new(0, 8, 0, 141)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
 	btnHit.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -598,7 +673,7 @@ local function criarPainelHitbox()
 
 	local btnVis = Instance.new("TextButton")
 	btnVis.Size = UDim2.new(0.5, -10, 0, 24)
-	btnVis.Position = UDim2.new(0.5, 2, 0, 113)
+	btnVis.Position = UDim2.new(0.5, 2, 0, 141)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
 	btnVis.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -609,9 +684,51 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnVis).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnVis, 1)
 
+	-- Slider Speed (CFrame)
+	local lblSpeed = Instance.new("TextLabel")
+	lblSpeed.Size = UDim2.new(1, -16, 0, 14)
+	lblSpeed.Position = UDim2.new(0, 8, 0, 169)
+	lblSpeed.BackgroundTransparency = 1
+	lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
+	lblSpeed.TextColor3 = Color3.fromRGB(225, 225, 235)
+	lblSpeed.Font = Enum.Font.GothamMedium
+	lblSpeed.TextSize = 11
+	lblSpeed.TextXAlignment = Enum.TextXAlignment.Left
+	lblSpeed.Parent = frame
+
+	local speedSliderBg = Instance.new("TextButton")
+	speedSliderBg.Name = "SpeedSliderTrack"
+	speedSliderBg.Size = UDim2.new(1, -16, 0, 13)
+	speedSliderBg.Position = UDim2.new(0, 8, 0, 185)
+	speedSliderBg.BackgroundColor3 = BOTAO_CINZA
+	speedSliderBg.Text = ""
+	speedSliderBg.AutoButtonColor = false
+	speedSliderBg.BorderSizePixel = 0
+	speedSliderBg.Parent = frame
+	Instance.new("UICorner", speedSliderBg).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(speedSliderBg, 1)
+
+	local speedFill = Instance.new("Frame")
+	speedFill.Size = UDim2.new(0.22, 0, 1, 0)
+	speedFill.BackgroundColor3 = ROXO_NEXUS
+	speedFill.BorderSizePixel = 0
+	speedFill.Parent = speedSliderBg
+	Instance.new("UICorner", speedFill).CornerRadius = UDim.new(1, 0)
+
+	local speedKnob = Instance.new("Frame")
+	speedKnob.Size = UDim2.new(0, 13, 0, 13)
+	speedKnob.Position = UDim2.new(0.22, 0, 0.5, 0)
+	speedKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+	speedKnob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+	speedKnob.BorderSizePixel = 0
+	speedKnob.Parent = speedSliderBg
+	Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(speedKnob, 1)
+
+	-- Slider Hitbox Size
 	local lblSize = Instance.new("TextLabel")
-	lblSize.Size = UDim2.new(1, -16, 0, 15)
-	lblSize.Position = UDim2.new(0, 8, 0, 142)
+	lblSize.Size = UDim2.new(1, -16, 0, 14)
+	lblSize.Position = UDim2.new(0, 8, 0, 202)
 	lblSize.BackgroundTransparency = 1
 	lblSize.Text = "Size: " .. tostring(hitboxSize)
 	lblSize.TextColor3 = Color3.fromRGB(225, 225, 235)
@@ -622,8 +739,8 @@ local function criarPainelHitbox()
 
 	local sliderBg = Instance.new("TextButton")
 	sliderBg.Name = "SizeSliderTrack"
-	sliderBg.Size = UDim2.new(1, -16, 0, 14)
-	sliderBg.Position = UDim2.new(0, 8, 0, 160)
+	sliderBg.Size = UDim2.new(1, -16, 0, 13)
+	sliderBg.Position = UDim2.new(0, 8, 0, 218)
 	sliderBg.BackgroundColor3 = BOTAO_CINZA
 	sliderBg.Text = ""
 	sliderBg.AutoButtonColor = false
@@ -640,7 +757,7 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.new(0, 14, 0, 14)
+	knob.Size = UDim2.new(0, 13, 0, 13)
 	knob.Position = UDim2.new(0.28, 0, 0.5, 0)
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
@@ -650,11 +767,22 @@ local function criarPainelHitbox()
 	aplicarBordaRoxa(knob, 1)
 
 	local minSize, maxSize = 3, HITBOX_MAX_SLIDER
-	local arrastandoSlider = false
+	local arrastandoSpeed = false
+	local arrastandoSize = false
 	local arrastandoPainel = false
 	local offsetPainel = Vector2.zero
 
-	local function aplicarSliderPorPosicaoX(posX)
+	local function aplicarSpeedPorPosicaoX(posX)
+		local largura = math.max(speedSliderBg.AbsoluteSize.X, 1)
+		local rel = math.clamp((posX - speedSliderBg.AbsolutePosition.X) / largura, 0, 1)
+		speedCFrameValor = math.clamp(math.floor((SPEED_CFRAME_MIN + rel * (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN)) + 0.5), SPEED_CFRAME_MIN, SPEED_CFRAME_MAX)
+		local pct = (speedCFrameValor - SPEED_CFRAME_MIN) / (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN)
+		speedFill.Size = UDim2.new(pct, 0, 1, 0)
+		speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
+		lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
+	end
+
+	local function aplicarSizePorPosicaoX(posX)
 		local largura = math.max(sliderBg.AbsoluteSize.X, 1)
 		local rel = math.clamp((posX - sliderBg.AbsolutePosition.X) / largura, 0, 1)
 		hitboxSize = math.clamp(math.floor((minSize + rel * (maxSize - minSize)) + 0.5), minSize, maxSize)
@@ -665,15 +793,24 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end
 
-	sliderBg.MouseButton1Down:Connect(function()
-		arrastandoSlider = true
+	speedSliderBg.MouseButton1Down:Connect(function()
+		arrastandoSpeed = true
+		arrastandoSize = false
 		arrastandoPainel = false
 		local mousePos = UserInputService:GetMouseLocation()
-		aplicarSliderPorPosicaoX(mousePos.X)
+		aplicarSpeedPorPosicaoX(mousePos.X)
+	end)
+
+	sliderBg.MouseButton1Down:Connect(function()
+		arrastandoSize = true
+		arrastandoSpeed = false
+		arrastandoPainel = false
+		local mousePos = UserInputService:GetMouseLocation()
+		aplicarSizePorPosicaoX(mousePos.X)
 	end)
 
 	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSlider then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSpeed and not arrastandoSize then
 			arrastandoPainel = true
 			offsetPainel = Vector2.new(
 				input.Position.X - frame.AbsolutePosition.X,
@@ -684,8 +821,10 @@ local function criarPainelHitbox()
 
 	UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			if arrastandoSlider then
-				aplicarSliderPorPosicaoX(input.Position.X)
+			if arrastandoSpeed then
+				aplicarSpeedPorPosicaoX(input.Position.X)
+			elseif arrastandoSize then
+				aplicarSizePorPosicaoX(input.Position.X)
 			elseif arrastandoPainel then
 				frame.Position = UDim2.new(
 					0,
@@ -699,14 +838,15 @@ local function criarPainelHitbox()
 
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			arrastandoSlider = false
+			arrastandoSpeed = false
+			arrastandoSize = false
 			arrastandoPainel = false
 		end
 	end)
 
 	local boxAMG = Instance.new("TextBox")
-	boxAMG.Size = UDim2.new(1, -16, 0, 24)
-	boxAMG.Position = UDim2.new(0, 8, 0, 181)
+	boxAMG.Size = UDim2.new(1, -16, 0, 23)
+	boxAMG.Position = UDim2.new(0, 8, 0, 237)
 	boxAMG.BackgroundColor3 = BOTAO_CINZA
 	boxAMG.Text = ""
 	boxAMG.PlaceholderText = "AMG (ex: ana pedro)..."
@@ -726,8 +866,8 @@ local function criarPainelHitbox()
 	end)
 
 	local boxFocus = Instance.new("TextBox")
-	boxFocus.Size = UDim2.new(1, -16, 0, 24)
-	boxFocus.Position = UDim2.new(0, 8, 0, 210)
+	boxFocus.Size = UDim2.new(1, -16, 0, 23)
+	boxFocus.Position = UDim2.new(0, 8, 0, 264)
 	boxFocus.BackgroundColor3 = BOTAO_CINZA
 	boxFocus.Text = ""
 	boxFocus.PlaceholderText = "Focus (ex: alvo1 alvo2)..."
@@ -748,7 +888,7 @@ local function criarPainelHitbox()
 
 	local atalhos = Instance.new("TextLabel")
 	atalhos.Size = UDim2.new(1, -16, 0, 14)
-	atalhos.Position = UDim2.new(0, 8, 0, 239)
+	atalhos.Position = UDim2.new(0, 8, 0, 291)
 	atalhos.BackgroundTransparency = 1
 	atalhos.Text = "Gatilho: E  |  Painel: J"
 	atalhos.TextColor3 = Color3.fromRGB(165, 165, 178)
@@ -759,7 +899,7 @@ local function criarPainelHitbox()
 	local rodape = Instance.new("TextLabel")
 	rodape.Name = "FooterCredits"
 	rodape.Size = UDim2.new(1, -16, 0, 14)
-	rodape.Position = UDim2.new(0, 8, 1, -18)
+	rodape.Position = UDim2.new(0, 8, 1, -17)
 	rodape.BackgroundTransparency = 1
 	rodape.Text = "By: VOID Santos7x"
 	rodape.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -787,6 +927,12 @@ local function criarPainelHitbox()
 		sincronizarNoAnimation()
 	end)
 
+	btnSpeed.MouseButton1Click:Connect(function()
+		speedCFrameAtivo = not speedCFrameAtivo
+		btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
+		btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
+
 	btnHit.MouseButton1Click:Connect(function()
 		hitboxAtivo = not hitboxAtivo
 		btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
@@ -801,9 +947,14 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local pctInicial = math.clamp((hitboxSize - minSize) / (maxSize - minSize), 0, 1)
-	fill.Size = UDim2.new(pctInicial, 0, 1, 0)
-	knob.Position = UDim2.new(pctInicial, 0, 0.5, 0)
+	local pctSpeedInicial = math.clamp((speedCFrameValor - SPEED_CFRAME_MIN) / (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN), 0, 1)
+	speedFill.Size = UDim2.new(pctSpeedInicial, 0, 1, 0)
+	speedKnob.Position = UDim2.new(pctSpeedInicial, 0, 0.5, 0)
+	lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
+
+	local pctSizeInicial = math.clamp((hitboxSize - minSize) / (maxSize - minSize), 0, 1)
+	fill.Size = UDim2.new(pctSizeInicial, 0, 1, 0)
+	knob.Position = UDim2.new(pctSizeInicial, 0, 0.5, 0)
 	lblSize.Text = "Size: " .. tostring(hitboxSize)
 
 	painelFrameUI = frame
@@ -934,7 +1085,10 @@ pcall(function()
 end)
 RunService.RenderStepped:Connect(aplicarFocoNoAlvo)
 RunService.Stepped:Connect(aplicarFocoNoAlvo)
-RunService.Heartbeat:Connect(aplicarFocoNoAlvo)
+RunService.Heartbeat:Connect(function(dt)
+	aplicarFocoNoAlvo()
+	aplicarSpeedCFrame(dt)
+end)
 
 task.spawn(function()
 	while true do
@@ -947,4 +1101,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Botao No Animation adicionado ao painel!")
+print("[Hitbox VOID] Speed por CFrame + slider adicionados ao painel!")
