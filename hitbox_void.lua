@@ -3,7 +3,7 @@ if getgenv and getgenv().UniversalTargetLockLoaded then
 	if getgenv().SetTargetLockUI then
 		getgenv().SetTargetLockUI(getgenv().UniversalTargetLockActive)
 	end
-	warn("[Hitbox VOID] Alternado para:", getgenv().UniversalTargetLockActive and "ON" or "OFF")
+	warn("[The VOID Painel] Alternado para:", getgenv().UniversalTargetLockActive and "ON" or "OFF")
 	return
 end
 
@@ -122,7 +122,7 @@ local function setKillAuraEstado(novoEstado)
 		yawAntesPulso = nil
 	end
 	atualizarKillAuraUI(killAuraAtivo)
-	print("[Hitbox VOID] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
+	print("[The VOID Painel] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
 end
 
 local function getGuiParent()
@@ -222,7 +222,7 @@ local function setEstado(novoEstado)
 		getgenv().UniversalTargetLockActive = ativo
 	end
 	atualizarVisual(ativo)
-	print("[Hitbox VOID]", ativo and "ATIVADO (ON)" or "DESATIVADO (OFF)")
+	print("[The VOID Painel]", ativo and "ATIVADO (ON)" or "DESATIVADO (OFF)")
 end
 
 if getgenv then
@@ -994,7 +994,7 @@ local function criarPainelHitbox()
 	titulo.Size = UDim2.new(1, -16, 0, 18)
 	titulo.Position = UDim2.new(0, 8, 0, 6)
 	titulo.BackgroundTransparency = 1
-	titulo.Text = "Hitbox VOID"
+	titulo.Text = "The VOID Painel"
 	titulo.TextColor3 = ROXO_NEXUS
 	titulo.Font = Enum.Font.GothamBold
 	titulo.TextSize = 13
@@ -1547,4 +1547,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Carregado com Kill Aura em pulso rapido no Q!")
+print("[The VOID Painel] Carregado com sucesso!")
