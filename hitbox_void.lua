@@ -20,6 +20,9 @@ local LocalPlayer = Players.LocalPlayer
 -- ==========================================
 local TECLA_ATALHO = Enum.KeyCode.E
 local TECLA_PAINEL = Enum.KeyCode.J
+local TECLA_ESPECIAL = Enum.KeyCode.G
+local JANELA_ESPECIAL_SEG = 1.2
+
 local DISTANCIA_MAXIMA = 22
 local MARGEM_TROCA = 3.5
 local FIRMEZA_GIRO = 1.0
@@ -28,7 +31,8 @@ local ORBITAR = false
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
-local TARGET_LOCK_PADRAO_HABILITADO = true -- Habilita Lock junto ao E quando E esta ON
+local TARGET_LOCK_PADRAO_HABILITADO = true
+local NO_ANIMATION_PADRAO_ATIVO = false
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
 local HITBOX_MAX_SLIDER = 27
@@ -47,8 +51,9 @@ if getgenv then
 	getgenv().UniversalTargetLockActive = false
 end
 
-local ativo = false -- Estado do gatilho E (AutoClick + Lock se habilitado)
+local ativo = false
 local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
+local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
 local alvoAtual = nil
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
@@ -60,6 +65,8 @@ local focusTexto = ""
 local originaisRoot = {}
 local ultimoEstadoAplicado = {}
 local marcadoresJogadores = {}
+local animConexoes = {}
+local ultimoEspecialTick = 0
 
 local function getGuiParent()
 	local ok, res = pcall(function()
@@ -164,6 +171,165 @@ if getgenv then
 end
 
 atualizarVisual(false)
+
+-- ==========================================
+-- NO ANIMATION (PACOTE PADRAO + SEM SOCO / SEM ESPECIAL G)
+-- ==========================================
+local NOMES_MOVIMENTO_PADRAO = {
+	"idle", "walk", "run", "jump", "fall", "swim", "climb", "land", "freefall", "running", "walking"
+}
+
+local PALAVRAS_ACAO_SOCO_G = {
+	"punch", "hit", "attack", "atk", "combat", "fight", "combo",
+	"grab", "catch", "special", "ult", "skill", "ability", "g_", "kick", "slap"
+}
+
+local function contemPalavra(texto, lista)
+	if not texto or texto == "" then return false end
+	local low = string.lower(texto)
+	for _, p in ipairs(lista) do
+		if string.find(low, p, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function ehAnimacaoMovimentoPadrao(track)
+	if not track then return false end
+
+	local okPrio, prio = pcall(function() return track.Priority end)
+	if okPrio and prio then
+		if prio == Enum.AnimationPriority.Core or prio == Enum.AnimationPriority.Idle or prio == Enum.AnimationPriority.Movement then
+			local nomeTrack = string.lower(track.Name or "")
+			local nomeAnim = (track.Animation and string.lower(track.Animation.Name or "")) or ""
+			if not contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) and not contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
+				return true
+			end
+		end
+	end
+
+	local nomeTrack = track.Name or ""
+	local nomeAnim = (track.Animation and track.Animation.Name) or ""
+	if contemPalavra(nomeTrack, NOMES_MOVIMENTO_PADRAO) or contemPalavra(nomeAnim, NOMES_MOVIMENTO_PADRAO) then
+		if not contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) and not contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function deveCortarTrack(track)
+	if not noAnimationAtivo or not track then return false end
+	if ehAnimacaoMovimentoPadrao(track) then
+		return false
+	end
+
+	local nomeTrack = track.Name or ""
+	local nomeAnim = (track.Animation and track.Animation.Name) or ""
+
+	if contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) or contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
+		return true
+	end
+
+	local okPrio, prio = pcall(function() return track.Priority end)
+	if okPrio and prio then
+		local ehAction = (prio == Enum.AnimationPriority.Action)
+			or (pcall(function() return prio == Enum.AnimationPriority.Action2 end) and prio == Enum.AnimationPriority.Action2)
+			or (pcall(function() return prio == Enum.AnimationPriority.Action3 end) and prio == Enum.AnimationPriority.Action3)
+			or (pcall(function() return prio == Enum.AnimationPriority.Action4 end) and prio == Enum.AnimationPriority.Action4)
+
+		if ehAction then
+			return true
+		end
+	end
+
+	if (os.clock() - ultimoEspecialTick) <= JANELA_ESPECIAL_SEG then
+		return true
+	end
+
+	return false
+end
+
+local function cortarSeAplicavel(track)
+	if deveCortarTrack(track) then
+		pcall(function()
+			track:Stop(0)
+			track:AdjustWeight(0, 0)
+		end)
+	end
+end
+
+local function limparConexoesAnim()
+	for _, conn in ipairs(animConexoes) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(animConexoes)
+end
+
+local function checarTracksHumanoid(hum)
+	if not hum then return end
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if animator then
+		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+			cortarSeAplicavel(track)
+		end
+	end
+	for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+		cortarSeAplicavel(track)
+	end
+end
+
+local function sincronizarNoAnimation()
+	local char = LocalPlayer.Character
+	if not char then return end
+
+	local animate = char:FindFirstChild("Animate")
+	if animate and animate:IsA("LocalScript") and animate.Disabled then
+		pcall(function() animate.Disabled = false end)
+	end
+
+	limparConexoesAnim()
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if noAnimationAtivo then
+		checarTracksHumanoid(hum)
+	end
+
+	if hum then
+		local animator = hum:FindFirstChildOfClass("Animator")
+		if animator then
+			table.insert(animConexoes, animator.AnimationPlayed:Connect(function(track)
+				cortarSeAplicavel(track)
+			end))
+		end
+		table.insert(animConexoes, hum.AnimationPlayed:Connect(function(track)
+			cortarSeAplicavel(track)
+		end))
+	end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+	task.wait(0.2)
+	sincronizarNoAnimation()
+end)
+
+task.spawn(function()
+	while true do
+		if noAnimationAtivo then
+			local char = LocalPlayer.Character
+			if char then
+				local animate = char:FindFirstChild("Animate")
+				if animate and animate:IsA("LocalScript") and animate.Disabled then
+					pcall(function() animate.Disabled = false end)
+				end
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				checarTracksHumanoid(hum)
+			end
+		end
+		task.wait(0.1)
+	end
+end)
 
 local function getCharAndRoot(plr)
 	local char = plr and plr.Character
@@ -356,8 +522,8 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 188, 0, 260)
-	frame.Position = UDim2.new(1, -202, 1, -316)
+	frame.Size = UDim2.new(0, 188, 0, 288)
+	frame.Position = UDim2.new(1, -202, 1, -344)
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
 	frame.Active = true
@@ -391,7 +557,6 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnAuto).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnAuto, 1)
 
-	-- Botao Target Lock (habilita o lock quando o gatilho E estiver ativo; nao trava sozinho)
 	local btnLock = Instance.new("TextButton")
 	btnLock.Size = UDim2.new(1, -16, 0, 24)
 	btnLock.Position = UDim2.new(0, 8, 0, 56)
@@ -405,9 +570,22 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnLock).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnLock, 1)
 
+	local btnNoAnim = Instance.new("TextButton")
+	btnNoAnim.Size = UDim2.new(1, -16, 0, 24)
+	btnNoAnim.Position = UDim2.new(0, 8, 0, 84)
+	btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
+	btnNoAnim.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btnNoAnim.Font = Enum.Font.GothamBold
+	btnNoAnim.TextSize = 11
+	btnNoAnim.BorderSizePixel = 0
+	btnNoAnim.Parent = frame
+	Instance.new("UICorner", btnNoAnim).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnNoAnim, 1)
+
 	local btnHit = Instance.new("TextButton")
 	btnHit.Size = UDim2.new(0.5, -10, 0, 24)
-	btnHit.Position = UDim2.new(0, 8, 0, 85)
+	btnHit.Position = UDim2.new(0, 8, 0, 113)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
 	btnHit.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -420,7 +598,7 @@ local function criarPainelHitbox()
 
 	local btnVis = Instance.new("TextButton")
 	btnVis.Size = UDim2.new(0.5, -10, 0, 24)
-	btnVis.Position = UDim2.new(0.5, 2, 0, 85)
+	btnVis.Position = UDim2.new(0.5, 2, 0, 113)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
 	btnVis.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -433,7 +611,7 @@ local function criarPainelHitbox()
 
 	local lblSize = Instance.new("TextLabel")
 	lblSize.Size = UDim2.new(1, -16, 0, 15)
-	lblSize.Position = UDim2.new(0, 8, 0, 114)
+	lblSize.Position = UDim2.new(0, 8, 0, 142)
 	lblSize.BackgroundTransparency = 1
 	lblSize.Text = "Size: " .. tostring(hitboxSize)
 	lblSize.TextColor3 = Color3.fromRGB(225, 225, 235)
@@ -445,7 +623,7 @@ local function criarPainelHitbox()
 	local sliderBg = Instance.new("TextButton")
 	sliderBg.Name = "SizeSliderTrack"
 	sliderBg.Size = UDim2.new(1, -16, 0, 14)
-	sliderBg.Position = UDim2.new(0, 8, 0, 132)
+	sliderBg.Position = UDim2.new(0, 8, 0, 160)
 	sliderBg.BackgroundColor3 = BOTAO_CINZA
 	sliderBg.Text = ""
 	sliderBg.AutoButtonColor = false
@@ -528,7 +706,7 @@ local function criarPainelHitbox()
 
 	local boxAMG = Instance.new("TextBox")
 	boxAMG.Size = UDim2.new(1, -16, 0, 24)
-	boxAMG.Position = UDim2.new(0, 8, 0, 153)
+	boxAMG.Position = UDim2.new(0, 8, 0, 181)
 	boxAMG.BackgroundColor3 = BOTAO_CINZA
 	boxAMG.Text = ""
 	boxAMG.PlaceholderText = "AMG (ex: ana pedro)..."
@@ -549,7 +727,7 @@ local function criarPainelHitbox()
 
 	local boxFocus = Instance.new("TextBox")
 	boxFocus.Size = UDim2.new(1, -16, 0, 24)
-	boxFocus.Position = UDim2.new(0, 8, 0, 182)
+	boxFocus.Position = UDim2.new(0, 8, 0, 210)
 	boxFocus.BackgroundColor3 = BOTAO_CINZA
 	boxFocus.Text = ""
 	boxFocus.PlaceholderText = "Focus (ex: alvo1 alvo2)..."
@@ -570,7 +748,7 @@ local function criarPainelHitbox()
 
 	local atalhos = Instance.new("TextLabel")
 	atalhos.Size = UDim2.new(1, -16, 0, 14)
-	atalhos.Position = UDim2.new(0, 8, 0, 211)
+	atalhos.Position = UDim2.new(0, 8, 0, 239)
 	atalhos.BackgroundTransparency = 1
 	atalhos.Text = "Gatilho: E  |  Painel: J"
 	atalhos.TextColor3 = Color3.fromRGB(165, 165, 178)
@@ -602,6 +780,13 @@ local function criarPainelHitbox()
 		end
 	end)
 
+	btnNoAnim.MouseButton1Click:Connect(function()
+		noAnimationAtivo = not noAnimationAtivo
+		btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
+		btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		sincronizarNoAnimation()
+	end)
+
 	btnHit.MouseButton1Click:Connect(function()
 		hitboxAtivo = not hitboxAtivo
 		btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
@@ -627,6 +812,7 @@ end
 
 criarPainelHitbox()
 atualizarVisual(ativo)
+sincronizarNoAnimation()
 
 task.spawn(function()
 	while true do
@@ -694,7 +880,6 @@ local function aplicarFocoNoAlvo()
 	end
 	atualizarVisual(ativo)
 
-	-- So aplica o Target Lock quando o gatilho E estiver ativo E o botao Target Lock estiver ON no painel
 	if not ativo or not targetLockHabilitadoNoPainel then
 		alvoAtual = nil
 		return
@@ -735,7 +920,9 @@ end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode == TECLA_ATALHO then
+	if input.KeyCode == TECLA_ESPECIAL then
+		ultimoEspecialTick = os.clock()
+	elseif input.KeyCode == TECLA_ATALHO then
 		setEstado(not ativo)
 	elseif input.KeyCode == TECLA_PAINEL and painelFrameUI then
 		painelFrameUI.Visible = not painelFrameUI.Visible
@@ -760,4 +947,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Botao Target Lock adicionado ao painel (ativado junto ao E)!")
+print("[Hitbox VOID] Botao No Animation adicionado ao painel!")
