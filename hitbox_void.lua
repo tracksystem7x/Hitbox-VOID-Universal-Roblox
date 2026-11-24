@@ -33,6 +33,7 @@ local DELAY_CLIQUE = 0.001
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local NO_ANIMATION_PADRAO_ATIVO = false
+local HUD_LOSANGO_PADRAO_VISIVEL = true
 local SPEED_CFRAME_PADRAO_ATIVO = false
 local SPEED_CFRAME_PADRAO = 1
 local SPEED_CFRAME_MIN = 1
@@ -49,6 +50,7 @@ local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
 local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
 local BOTAO_CINZA = Color3.fromRGB(42, 42, 50)
 local BOTAO_ROXO_ON = Color3.fromRGB(145, 50, 250)
+local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -356)
 -- ==========================================
 
 if getgenv then
@@ -59,6 +61,7 @@ end
 local ativo = false
 local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
+local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
 local speedCFrameValor = SPEED_CFRAME_PADRAO
 local alvoAtual = nil
@@ -89,7 +92,7 @@ end
 
 local parentGui = getGuiParent()
 
-local losangoUI, statusUI
+local losangoGuiRoot, losangoUI, statusUI
 
 local function criarIndicadorUI()
 	if not parentGui then return end
@@ -100,6 +103,7 @@ local function criarIndicadorUI()
 	gui.Name = "UniversalLockDiamondHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
+	gui.Enabled = hudLosangoVisivel
 	gui.Parent = parentGui
 
 	local holder = Instance.new("Frame")
@@ -139,6 +143,7 @@ local function criarIndicadorUI()
 	textoEstado.TextXAlignment = Enum.TextXAlignment.Left
 	textoEstado.Parent = holder
 
+	losangoGuiRoot = gui
 	losangoUI = losango
 	statusUI = textoEstado
 end
@@ -572,6 +577,104 @@ local function aplicarBordaRoxa(instancia, espessura)
 	return stroke
 end
 
+local function criarBotaoPadrao(pai, texto, pos, tamanho, tamanhoTexto)
+	local btn = Instance.new("TextButton")
+	btn.Size = tamanho
+	btn.Position = pos
+	btn.BackgroundColor3 = BOTAO_CINZA
+	btn.Text = texto
+	btn.TextColor3 = Color3.fromRGB(240, 240, 248)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = tamanhoTexto or 11
+	btn.BorderSizePixel = 0
+	btn.Parent = pai
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btn, 1)
+	return btn
+end
+
+local function criarCampoTextoPadrao(pai, placeholder, pos, altura)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, -16, 0, altura or 23)
+	box.Position = pos
+	box.BackgroundColor3 = BOTAO_CINZA
+	box.Text = ""
+	box.PlaceholderText = placeholder
+	box.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
+	box.TextColor3 = Color3.fromRGB(240, 240, 245)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 11
+	box.ClearTextOnFocus = false
+	box.BorderSizePixel = 0
+	box.Parent = pai
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(box, 1)
+	return box
+end
+
+local function criarSliderPadrao(pai, rotuloInicial, posY, minVal, maxVal, valorInicial, onChange)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -16, 0, 14)
+	lbl.Position = UDim2.new(0, 8, 0, posY)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = rotuloInicial .. tostring(valorInicial)
+	lbl.TextColor3 = Color3.fromRGB(225, 225, 235)
+	lbl.Font = Enum.Font.GothamMedium
+	lbl.TextSize = 11
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Parent = pai
+
+	local track = Instance.new("TextButton")
+	track.Size = UDim2.new(1, -16, 0, 13)
+	track.Position = UDim2.new(0, 8, 0, posY + 16)
+	track.BackgroundColor3 = BOTAO_CINZA
+	track.Text = ""
+	track.AutoButtonColor = false
+	track.BorderSizePixel = 0
+	track.Parent = pai
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(track, 1)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = ROXO_NEXUS
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.new(0, 13, 0, 13)
+	knob.Position = UDim2.new(0, 0, 0.5, 0)
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+	knob.BorderSizePixel = 0
+	knob.Parent = track
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(knob, 1)
+
+	local function setValor(novoVal, disparar)
+		local clamped = math.clamp(math.floor(novoVal + 0.5), minVal, maxVal)
+		local pct = math.clamp((clamped - minVal) / math.max(maxVal - minVal, 1), 0, 1)
+		fill.Size = UDim2.new(pct, 0, 1, 0)
+		knob.Position = UDim2.new(pct, 0, 0.5, 0)
+		lbl.Text = rotuloInicial .. tostring(clamped)
+		if disparar and onChange then
+			onChange(clamped)
+		end
+	end
+
+	setValor(valorInicial, false)
+
+	return {
+		track = track,
+		setValorPorPosicaoX = function(posX)
+			local largura = math.max(track.AbsoluteSize.X, 1)
+			local rel = math.clamp((posX - track.AbsolutePosition.X) / largura, 0, 1)
+			setValor(minVal + rel * (maxVal - minVal), true)
+		end
+	}
+end
+
 local function criarPainelHitbox()
 	if not parentGui then return end
 	local antigo = parentGui:FindFirstChild("UniversalCombatPanel")
@@ -584,8 +687,8 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 188, 0, 326)
-	frame.Position = UDim2.new(1, -202, 1, -382)
+	frame.Size = UDim2.new(0, 200, 0, 300)
+	frame.Position = POSICAO_PAINEL_PADRAO
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
 	frame.Active = true
@@ -606,211 +709,236 @@ local function criarPainelHitbox()
 	titulo.TextXAlignment = Enum.TextXAlignment.Center
 	titulo.Parent = frame
 
-	local btnAuto = Instance.new("TextButton")
-	btnAuto.Size = UDim2.new(1, -16, 0, 24)
-	btnAuto.Position = UDim2.new(0, 8, 0, 28)
-	btnAuto.BackgroundColor3 = BOTAO_CINZA
-	btnAuto.Text = "AutoClick VOID (E): OFF"
-	btnAuto.TextColor3 = Color3.fromRGB(235, 235, 240)
-	btnAuto.Font = Enum.Font.GothamBold
-	btnAuto.TextSize = 11
-	btnAuto.BorderSizePixel = 0
-	btnAuto.Parent = frame
-	Instance.new("UICorner", btnAuto).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnAuto, 1)
+	-- Fileira de abas no topo do painel
+	local abasNomes = { "Combat", "Move", "Visual", "Config" }
+	local abasBotoes = {}
+	local abasPaginas = {}
 
-	local btnLock = Instance.new("TextButton")
-	btnLock.Size = UDim2.new(1, -16, 0, 24)
-	btnLock.Position = UDim2.new(0, 8, 0, 56)
+	local barraAbas = Instance.new("Frame")
+	barraAbas.Name = "TopTabsBar"
+	barraAbas.Size = UDim2.new(1, -16, 0, 22)
+	barraAbas.Position = UDim2.new(0, 8, 0, 27)
+	barraAbas.BackgroundTransparency = 1
+	barraAbas.Parent = frame
+
+	local larguraDisponivel = 184
+	local espacoEntreAbas = 3
+	local larguraAba = math.floor((larguraDisponivel - espacoEntreAbas * (#abasNomes - 1)) / #abasNomes)
+
+	for idx, nomeAba in ipairs(abasNomes) do
+		local xPos = (idx - 1) * (larguraAba + espacoEntreAbas)
+		local tabBtn = Instance.new("TextButton")
+		tabBtn.Name = "Tab_" .. nomeAba
+		tabBtn.Size = UDim2.new(0, larguraAba, 1, 0)
+		tabBtn.Position = UDim2.new(0, xPos, 0, 0)
+		tabBtn.BackgroundColor3 = BOTAO_CINZA
+		tabBtn.Text = nomeAba
+		tabBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+		tabBtn.Font = Enum.Font.GothamBold
+		tabBtn.TextSize = 9
+		tabBtn.BorderSizePixel = 0
+		tabBtn.Parent = barraAbas
+		Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0, 4)
+		aplicarBordaRoxa(tabBtn, 1)
+
+		local pagina = Instance.new("Frame")
+		pagina.Name = "Page_" .. nomeAba
+		pagina.Size = UDim2.new(1, 0, 1, -74)
+		pagina.Position = UDim2.new(0, 0, 0, 53)
+		pagina.BackgroundTransparency = 1
+		pagina.Visible = (idx == 1)
+		pagina.Parent = frame
+
+		abasBotoes[nomeAba] = tabBtn
+		abasPaginas[nomeAba] = pagina
+	end
+
+	local function selecionarAba(nomeEscolhido)
+		for nomeAba, pagina in pairs(abasPaginas) do
+			local estaSelecionada = (nomeAba == nomeEscolhido)
+			pagina.Visible = estaSelecionada
+			local btn = abasBotoes[nomeAba]
+			if btn then
+				btn.BackgroundColor3 = estaSelecionada and BOTAO_ROXO_ON or BOTAO_CINZA
+				btn.TextColor3 = estaSelecionada and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 220)
+			end
+		end
+	end
+
+	for nomeAba, tabBtn in pairs(abasBotoes) do
+		tabBtn.MouseButton1Click:Connect(function()
+			selecionarAba(nomeAba)
+		end)
+	end
+
+	-- ==========================================
+	-- ABA 1: COMBAT
+	-- ==========================================
+	local pagCombat = abasPaginas.Combat
+	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 23), 11)
+	local btnLock = criarBotaoPadrao(
+		pagCombat,
+		targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF",
+		UDim2.new(0, 8, 0, 27),
+		UDim2.new(1, -16, 0, 23),
+		11
+	)
 	btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
-	btnLock.Text = targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF"
-	btnLock.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btnLock.Font = Enum.Font.GothamBold
-	btnLock.TextSize = 11
-	btnLock.BorderSizePixel = 0
-	btnLock.Parent = frame
-	Instance.new("UICorner", btnLock).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnLock, 1)
 
-	local btnNoAnim = Instance.new("TextButton")
-	btnNoAnim.Size = UDim2.new(1, -16, 0, 24)
-	btnNoAnim.Position = UDim2.new(0, 8, 0, 84)
-	btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
-	btnNoAnim.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btnNoAnim.Font = Enum.Font.GothamBold
-	btnNoAnim.TextSize = 11
-	btnNoAnim.BorderSizePixel = 0
-	btnNoAnim.Parent = frame
-	Instance.new("UICorner", btnNoAnim).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnNoAnim, 1)
-
-	local btnSpeed = Instance.new("TextButton")
-	btnSpeed.Size = UDim2.new(1, -16, 0, 24)
-	btnSpeed.Position = UDim2.new(0, 8, 0, 112)
-	btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
-	btnSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btnSpeed.Font = Enum.Font.GothamBold
-	btnSpeed.TextSize = 11
-	btnSpeed.BorderSizePixel = 0
-	btnSpeed.Parent = frame
-	Instance.new("UICorner", btnSpeed).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnSpeed, 1)
-
-	local btnHit = Instance.new("TextButton")
-	btnHit.Size = UDim2.new(0.5, -10, 0, 24)
-	btnHit.Position = UDim2.new(0, 8, 0, 141)
+	local btnHit = criarBotaoPadrao(
+		pagCombat,
+		hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF",
+		UDim2.new(0, 8, 0, 54),
+		UDim2.new(0.5, -10, 0, 23),
+		10
+	)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
-	btnHit.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btnHit.Font = Enum.Font.GothamBold
-	btnHit.TextSize = 10
-	btnHit.BorderSizePixel = 0
-	btnHit.Parent = frame
-	Instance.new("UICorner", btnHit).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnHit, 1)
 
-	local btnVis = Instance.new("TextButton")
-	btnVis.Size = UDim2.new(0.5, -10, 0, 24)
-	btnVis.Position = UDim2.new(0.5, 2, 0, 141)
+	local btnVis = criarBotaoPadrao(
+		pagCombat,
+		hitboxVisivel and "Visivel: Sim" or "Visivel: Nao",
+		UDim2.new(0.5, 2, 0, 54),
+		UDim2.new(0.5, -10, 0, 23),
+		10
+	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-	btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
-	btnVis.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btnVis.Font = Enum.Font.GothamBold
-	btnVis.TextSize = 10
-	btnVis.BorderSizePixel = 0
-	btnVis.Parent = frame
-	Instance.new("UICorner", btnVis).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btnVis, 1)
 
-	-- Slider Speed (CFrame: 1 ate 200)
-	local lblSpeed = Instance.new("TextLabel")
-	lblSpeed.Size = UDim2.new(1, -16, 0, 14)
-	lblSpeed.Position = UDim2.new(0, 8, 0, 169)
-	lblSpeed.BackgroundTransparency = 1
-	lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
-	lblSpeed.TextColor3 = Color3.fromRGB(225, 225, 235)
-	lblSpeed.Font = Enum.Font.GothamMedium
-	lblSpeed.TextSize = 11
-	lblSpeed.TextXAlignment = Enum.TextXAlignment.Left
-	lblSpeed.Parent = frame
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 81, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+		hitboxSize = novoSize
+		sincronizarHitboxEMarcadores()
+	end)
 
-	local speedSliderBg = Instance.new("TextButton")
-	speedSliderBg.Name = "SpeedSliderTrack"
-	speedSliderBg.Size = UDim2.new(1, -16, 0, 13)
-	speedSliderBg.Position = UDim2.new(0, 8, 0, 185)
-	speedSliderBg.BackgroundColor3 = BOTAO_CINZA
-	speedSliderBg.Text = ""
-	speedSliderBg.AutoButtonColor = false
-	speedSliderBg.BorderSizePixel = 0
-	speedSliderBg.Parent = frame
-	Instance.new("UICorner", speedSliderBg).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(speedSliderBg, 1)
+	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 118), 22)
+	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 144), 22)
 
-	local speedFill = Instance.new("Frame")
-	speedFill.Size = UDim2.new(0, 0, 1, 0)
-	speedFill.BackgroundColor3 = ROXO_NEXUS
-	speedFill.BorderSizePixel = 0
-	speedFill.Parent = speedSliderBg
-	Instance.new("UICorner", speedFill).CornerRadius = UDim.new(1, 0)
+	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
+		amgTexto = boxAMG.Text
+		sincronizarHitboxEMarcadores()
+	end)
 
-	local speedKnob = Instance.new("Frame")
-	speedKnob.Size = UDim2.new(0, 13, 0, 13)
-	speedKnob.Position = UDim2.new(0, 0, 0.5, 0)
-	speedKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-	speedKnob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-	speedKnob.BorderSizePixel = 0
-	speedKnob.Parent = speedSliderBg
-	Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(speedKnob, 1)
+	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
+		focusTexto = boxFocus.Text
+		sincronizarHitboxEMarcadores()
+	end)
 
-	-- Slider Hitbox Size
-	local lblSize = Instance.new("TextLabel")
-	lblSize.Size = UDim2.new(1, -16, 0, 14)
-	lblSize.Position = UDim2.new(0, 8, 0, 202)
-	lblSize.BackgroundTransparency = 1
-	lblSize.Text = "Size: " .. tostring(hitboxSize)
-	lblSize.TextColor3 = Color3.fromRGB(225, 225, 235)
-	lblSize.Font = Enum.Font.GothamMedium
-	lblSize.TextSize = 11
-	lblSize.TextXAlignment = Enum.TextXAlignment.Left
-	lblSize.Parent = frame
+	-- ==========================================
+	-- ABA 2: MOVE
+	-- ==========================================
+	local pagMove = abasPaginas.Move
+	local btnSpeed = criarBotaoPadrao(
+		pagMove,
+		speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF",
+		UDim2.new(0, 8, 0, 4),
+		UDim2.new(1, -16, 0, 25),
+		11
+	)
+	btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderBg = Instance.new("TextButton")
-	sliderBg.Name = "SizeSliderTrack"
-	sliderBg.Size = UDim2.new(1, -16, 0, 13)
-	sliderBg.Position = UDim2.new(0, 8, 0, 218)
-	sliderBg.BackgroundColor3 = BOTAO_CINZA
-	sliderBg.Text = ""
-	sliderBg.AutoButtonColor = false
-	sliderBg.BorderSizePixel = 0
-	sliderBg.Parent = frame
-	Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(sliderBg, 1)
+	local sliderSpeed = criarSliderPadrao(pagMove, "Speed: ", 38, SPEED_CFRAME_MIN, SPEED_CFRAME_MAX, speedCFrameValor, function(novoSpeed)
+		speedCFrameValor = novoSpeed
+	end)
 
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(0.28, 0, 1, 0)
-	fill.BackgroundColor3 = ROXO_NEXUS
-	fill.BorderSizePixel = 0
-	fill.Parent = sliderBg
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	local dicaMove = Instance.new("TextLabel")
+	dicaMove.Size = UDim2.new(1, -16, 0, 36)
+	dicaMove.Position = UDim2.new(0, 8, 0, 76)
+	dicaMove.BackgroundTransparency = 1
+	dicaMove.Text = "Deslocamento horizontal por CFrame sem alterar WalkSpeed."
+	dicaMove.TextColor3 = Color3.fromRGB(165, 165, 180)
+	dicaMove.TextWrapped = true
+	dicaMove.Font = Enum.Font.Gotham
+	dicaMove.TextSize = 10
+	dicaMove.TextXAlignment = Enum.TextXAlignment.Left
+	dicaMove.Parent = pagMove
 
-	local knob = Instance.new("Frame")
-	knob.Size = UDim2.new(0, 13, 0, 13)
-	knob.Position = UDim2.new(0.28, 0, 0.5, 0)
-	knob.AnchorPoint = Vector2.new(0.5, 0.5)
-	knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-	knob.BorderSizePixel = 0
-	knob.Parent = sliderBg
-	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(knob, 1)
+	-- ==========================================
+	-- ABA 3: VISUAL
+	-- ==========================================
+	local pagVisual = abasPaginas.Visual
+	local btnNoAnim = criarBotaoPadrao(
+		pagVisual,
+		noAnimationAtivo and "No Animation: ON" or "No Animation: OFF",
+		UDim2.new(0, 8, 0, 4),
+		UDim2.new(1, -16, 0, 25),
+		11
+	)
+	btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local minSize, maxSize = 3, HITBOX_MAX_SLIDER
-	local arrastandoSpeed = false
-	local arrastandoSize = false
+	local btnHudLosango = criarBotaoPadrao(
+		pagVisual,
+		hudLosangoVisivel and "HUD Losango: ON" or "HUD Losango: OFF",
+		UDim2.new(0, 8, 0, 35),
+		UDim2.new(1, -16, 0, 25),
+		11
+	)
+	btnHudLosango.BackgroundColor3 = hudLosangoVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
+
+	local dicaVisual = Instance.new("TextLabel")
+	dicaVisual.Size = UDim2.new(1, -16, 0, 44)
+	dicaVisual.Position = UDim2.new(0, 8, 0, 68)
+	dicaVisual.BackgroundTransparency = 1
+	dicaVisual.Text = "No Animation mantem seu pacote padrao e corta soco e especial (G)."
+	dicaVisual.TextColor3 = Color3.fromRGB(165, 165, 180)
+	dicaVisual.TextWrapped = true
+	dicaVisual.Font = Enum.Font.Gotham
+	dicaVisual.TextSize = 10
+	dicaVisual.TextXAlignment = Enum.TextXAlignment.Left
+	dicaVisual.Parent = pagVisual
+
+	-- ==========================================
+	-- ABA 4: CONFIG
+	-- ==========================================
+	local pagConfig = abasPaginas.Config
+	local btnResetPos = criarBotaoPadrao(
+		pagConfig,
+		"Resetar Posicao",
+		UDim2.new(0, 8, 0, 4),
+		UDim2.new(1, -16, 0, 25),
+		11
+	)
+
+	local infoAtalhos = Instance.new("TextLabel")
+	infoAtalhos.Size = UDim2.new(1, -16, 0, 68)
+	infoAtalhos.Position = UDim2.new(0, 8, 0, 36)
+	infoAtalhos.BackgroundTransparency = 1
+	infoAtalhos.Text = "Gatilho: E\nEspecial: G\nEsconder/Mostrar Painel: J"
+	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
+	infoAtalhos.Font = Enum.Font.GothamMedium
+	infoAtalhos.TextSize = 11
+	infoAtalhos.TextXAlignment = Enum.TextXAlignment.Left
+	infoAtalhos.TextYAlignment = Enum.TextYAlignment.Top
+	infoAtalhos.Parent = pagConfig
+
+	-- Rodape fixo na parte inferior do painel
+	local rodape = Instance.new("TextLabel")
+	rodape.Name = "FooterCredits"
+	rodape.Size = UDim2.new(1, -16, 0, 14)
+	rodape.Position = UDim2.new(0, 8, 1, -18)
+	rodape.BackgroundTransparency = 1
+	rodape.Text = "By: VOID Santos7x"
+	rodape.TextColor3 = Color3.fromRGB(255, 255, 255)
+	rodape.Font = Enum.Font.GothamMedium
+	rodape.TextSize = 9
+	rodape.Parent = frame
+
+	-- Arrastar painel e sliders
+	local arrastandoSlider = nil
 	local arrastandoPainel = false
 	local offsetPainel = Vector2.zero
 
-	local function aplicarSpeedPorPosicaoX(posX)
-		local largura = math.max(speedSliderBg.AbsoluteSize.X, 1)
-		local rel = math.clamp((posX - speedSliderBg.AbsolutePosition.X) / largura, 0, 1)
-		speedCFrameValor = math.clamp(math.floor((SPEED_CFRAME_MIN + rel * (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN)) + 0.5), SPEED_CFRAME_MIN, SPEED_CFRAME_MAX)
-		local pct = (speedCFrameValor - SPEED_CFRAME_MIN) / (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN)
-		speedFill.Size = UDim2.new(pct, 0, 1, 0)
-		speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
-		lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
-	end
-
-	local function aplicarSizePorPosicaoX(posX)
-		local largura = math.max(sliderBg.AbsoluteSize.X, 1)
-		local rel = math.clamp((posX - sliderBg.AbsolutePosition.X) / largura, 0, 1)
-		hitboxSize = math.clamp(math.floor((minSize + rel * (maxSize - minSize)) + 0.5), minSize, maxSize)
-		local pct = (hitboxSize - minSize) / (maxSize - minSize)
-		fill.Size = UDim2.new(pct, 0, 1, 0)
-		knob.Position = UDim2.new(pct, 0, 0.5, 0)
-		lblSize.Text = "Size: " .. tostring(hitboxSize)
-		sincronizarHitboxEMarcadores()
-	end
-
-	speedSliderBg.MouseButton1Down:Connect(function()
-		arrastandoSpeed = true
-		arrastandoSize = false
+	sliderSize.track.MouseButton1Down:Connect(function()
+		arrastandoSlider = sliderSize
 		arrastandoPainel = false
-		local mousePos = UserInputService:GetMouseLocation()
-		aplicarSpeedPorPosicaoX(mousePos.X)
+		sliderSize.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
 	end)
 
-	sliderBg.MouseButton1Down:Connect(function()
-		arrastandoSize = true
-		arrastandoSpeed = false
+	sliderSpeed.track.MouseButton1Down:Connect(function()
+		arrastandoSlider = sliderSpeed
 		arrastandoPainel = false
-		local mousePos = UserInputService:GetMouseLocation()
-		aplicarSizePorPosicaoX(mousePos.X)
+		sliderSpeed.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
 	end)
 
 	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSpeed and not arrastandoSize then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSlider then
 			arrastandoPainel = true
 			offsetPainel = Vector2.new(
 				input.Position.X - frame.AbsolutePosition.X,
@@ -821,10 +949,8 @@ local function criarPainelHitbox()
 
 	UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			if arrastandoSpeed then
-				aplicarSpeedPorPosicaoX(input.Position.X)
-			elseif arrastandoSize then
-				aplicarSizePorPosicaoX(input.Position.X)
+			if arrastandoSlider then
+				arrastandoSlider.setValorPorPosicaoX(input.Position.X)
 			elseif arrastandoPainel then
 				frame.Position = UDim2.new(
 					0,
@@ -838,75 +964,12 @@ local function criarPainelHitbox()
 
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			arrastandoSpeed = false
-			arrastandoSize = false
+			arrastandoSlider = nil
 			arrastandoPainel = false
 		end
 	end)
 
-	local boxAMG = Instance.new("TextBox")
-	boxAMG.Size = UDim2.new(1, -16, 0, 23)
-	boxAMG.Position = UDim2.new(0, 8, 0, 237)
-	boxAMG.BackgroundColor3 = BOTAO_CINZA
-	boxAMG.Text = ""
-	boxAMG.PlaceholderText = "AMG (ex: ana pedro)..."
-	boxAMG.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
-	boxAMG.TextColor3 = Color3.fromRGB(240, 240, 245)
-	boxAMG.Font = Enum.Font.Gotham
-	boxAMG.TextSize = 11
-	boxAMG.ClearTextOnFocus = false
-	boxAMG.BorderSizePixel = 0
-	boxAMG.Parent = frame
-	Instance.new("UICorner", boxAMG).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(boxAMG, 1)
-
-	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
-		amgTexto = boxAMG.Text
-		sincronizarHitboxEMarcadores()
-	end)
-
-	local boxFocus = Instance.new("TextBox")
-	boxFocus.Size = UDim2.new(1, -16, 0, 23)
-	boxFocus.Position = UDim2.new(0, 8, 0, 264)
-	boxFocus.BackgroundColor3 = BOTAO_CINZA
-	boxFocus.Text = ""
-	boxFocus.PlaceholderText = "Focus (ex: alvo1 alvo2)..."
-	boxFocus.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
-	boxFocus.TextColor3 = Color3.fromRGB(240, 240, 245)
-	boxFocus.Font = Enum.Font.Gotham
-	boxFocus.TextSize = 11
-	boxFocus.ClearTextOnFocus = false
-	boxFocus.BorderSizePixel = 0
-	boxFocus.Parent = frame
-	Instance.new("UICorner", boxFocus).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(boxFocus, 1)
-
-	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
-		focusTexto = boxFocus.Text
-		sincronizarHitboxEMarcadores()
-	end)
-
-	local atalhos = Instance.new("TextLabel")
-	atalhos.Size = UDim2.new(1, -16, 0, 14)
-	atalhos.Position = UDim2.new(0, 8, 0, 291)
-	atalhos.BackgroundTransparency = 1
-	atalhos.Text = "Gatilho: E  |  Painel: J"
-	atalhos.TextColor3 = Color3.fromRGB(165, 165, 178)
-	atalhos.Font = Enum.Font.Gotham
-	atalhos.TextSize = 10
-	atalhos.Parent = frame
-
-	local rodape = Instance.new("TextLabel")
-	rodape.Name = "FooterCredits"
-	rodape.Size = UDim2.new(1, -16, 0, 14)
-	rodape.Position = UDim2.new(0, 8, 1, -17)
-	rodape.BackgroundTransparency = 1
-	rodape.Text = "By: VOID Santos7x"
-	rodape.TextColor3 = Color3.fromRGB(255, 255, 255)
-	rodape.Font = Enum.Font.GothamMedium
-	rodape.TextSize = 9
-	rodape.Parent = frame
-
+	-- Eventos dos botoes
 	btnAuto.MouseButton1Click:Connect(function()
 		setEstado(not ativo)
 	end)
@@ -918,19 +981,6 @@ local function criarPainelHitbox()
 		if not targetLockHabilitadoNoPainel then
 			alvoAtual = nil
 		end
-	end)
-
-	btnNoAnim.MouseButton1Click:Connect(function()
-		noAnimationAtivo = not noAnimationAtivo
-		btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
-		btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-		sincronizarNoAnimation()
-	end)
-
-	btnSpeed.MouseButton1Click:Connect(function()
-		speedCFrameAtivo = not speedCFrameAtivo
-		btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
-		btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -947,16 +997,33 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local pctSpeedInicial = math.clamp((speedCFrameValor - SPEED_CFRAME_MIN) / (SPEED_CFRAME_MAX - SPEED_CFRAME_MIN), 0, 1)
-	speedFill.Size = UDim2.new(pctSpeedInicial, 0, 1, 0)
-	speedKnob.Position = UDim2.new(pctSpeedInicial, 0, 0.5, 0)
-	lblSpeed.Text = "Speed: " .. tostring(speedCFrameValor)
+	btnSpeed.MouseButton1Click:Connect(function()
+		speedCFrameAtivo = not speedCFrameAtivo
+		btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
+		btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
 
-	local pctSizeInicial = math.clamp((hitboxSize - minSize) / (maxSize - minSize), 0, 1)
-	fill.Size = UDim2.new(pctSizeInicial, 0, 1, 0)
-	knob.Position = UDim2.new(pctSizeInicial, 0, 0.5, 0)
-	lblSize.Text = "Size: " .. tostring(hitboxSize)
+	btnNoAnim.MouseButton1Click:Connect(function()
+		noAnimationAtivo = not noAnimationAtivo
+		btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
+		btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		sincronizarNoAnimation()
+	end)
 
+	btnHudLosango.MouseButton1Click:Connect(function()
+		hudLosangoVisivel = not hudLosangoVisivel
+		btnHudLosango.Text = hudLosangoVisivel and "HUD Losango: ON" or "HUD Losango: OFF"
+		btnHudLosango.BackgroundColor3 = hudLosangoVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
+		if losangoGuiRoot then
+			losangoGuiRoot.Enabled = hudLosangoVisivel
+		end
+	end)
+
+	btnResetPos.MouseButton1Click:Connect(function()
+		frame.Position = POSICAO_PAINEL_PADRAO
+	end)
+
+	selecionarAba("Combat")
 	painelFrameUI = frame
 	btnAutoClickUI = btnAuto
 end
@@ -1101,4 +1168,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Speed CFrame agora inicia em 1 e vai ate 200!")
+print("[Hitbox VOID] Abas no topo (Combat, Move, Visual, Config) adicionadas!")
