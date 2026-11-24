@@ -1,0 +1,730 @@
+if getgenv and getgenv().UniversalTargetLockLoaded then
+	getgenv().UniversalTargetLockActive = not getgenv().UniversalTargetLockActive
+	if getgenv().SetTargetLockUI then
+		getgenv().SetTargetLockUI(getgenv().UniversalTargetLockActive)
+	end
+	warn("[Hitbox VOID] Alternado para:", getgenv().UniversalTargetLockActive and "ON" or "OFF")
+	return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ==========================================
+-- CONFIGURACAO GERAL
+-- ==========================================
+local TECLA_ATALHO = Enum.KeyCode.E
+local TECLA_PAINEL = Enum.KeyCode.J
+local DISTANCIA_MAXIMA = 22
+local MARGEM_TROCA = 3.5
+local FIRMEZA_GIRO = 1.0
+local ORBITAR = false
+
+local ATIVAR_AUTOCLICK_JUNTO = true
+local DELAY_CLIQUE = 0.001
+
+local HITBOX_PADRAO_ATIVO = false
+local HITBOX_TAMANHO_PADRAO = 12
+local HITBOX_MAX_SLIDER = 27
+local HITBOX_VISIVEL_PADRAO = true
+local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
+local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
+
+-- Tema Roxo Nexus
+local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
+local BOTAO_CINZA = Color3.fromRGB(42, 42, 50)
+local BOTAO_ROXO_ON = Color3.fromRGB(145, 50, 250)
+-- ==========================================
+
+if getgenv then
+	getgenv().UniversalTargetLockLoaded = true
+	getgenv().UniversalTargetLockActive = false
+end
+
+local ativo = false
+local alvoAtual = nil
+
+local hitboxAtivo = HITBOX_PADRAO_ATIVO
+local hitboxVisivel = HITBOX_VISIVEL_PADRAO
+local hitboxSize = HITBOX_TAMANHO_PADRAO
+local amgTexto = ""
+local focusTexto = ""
+
+local originaisRoot = {}
+local ultimoEstadoAplicado = {}
+local marcadoresJogadores = {}
+
+local function getGuiParent()
+	local ok, res = pcall(function()
+		local test = Instance.new("ScreenGui")
+		test.Name = "LockGuiTest"
+		test.Parent = CoreGui
+		test:Destroy()
+		return CoreGui
+	end)
+	if ok and res then return res end
+	return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
+end
+
+local parentGui = getGuiParent()
+
+local losangoUI, statusUI
+
+local function criarIndicadorUI()
+	if not parentGui then return end
+	local antiga = parentGui:FindFirstChild("UniversalLockDiamondHUD")
+	if antiga then antiga:Destroy() end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "UniversalLockDiamondHUD"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.Parent = parentGui
+
+	local holder = Instance.new("Frame")
+	holder.Name = "DiamondHolder"
+	holder.Size = UDim2.new(0, 34, 0, 34)
+	holder.Position = UDim2.new(0, 14, 0, 66)
+	holder.BackgroundTransparency = 1
+	holder.Parent = gui
+
+	local losango = Instance.new("Frame")
+	losango.Name = "DiamondShape"
+	losango.Size = UDim2.new(0, 22, 0, 22)
+	losango.Position = UDim2.new(0.5, 0, 0.5, 0)
+	losango.AnchorPoint = Vector2.new(0.5, 0.5)
+	losango.Rotation = 45
+	losango.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
+	losango.BorderSizePixel = 0
+	losango.Parent = holder
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1.5
+	stroke.Transparency = 0.25
+	stroke.Parent = losango
+
+	local textoEstado = Instance.new("TextLabel")
+	textoEstado.Name = "StatusLabel"
+	textoEstado.Size = UDim2.new(0, 44, 0, 22)
+	textoEstado.Position = UDim2.new(1, 8, 0.5, 0)
+	textoEstado.AnchorPoint = Vector2.new(0, 0.5)
+	textoEstado.BackgroundTransparency = 1
+	textoEstado.Text = "OFF"
+	textoEstado.TextColor3 = Color3.fromRGB(235, 65, 65)
+	textoEstado.TextStrokeTransparency = 0.2
+	textoEstado.Font = Enum.Font.GothamBold
+	textoEstado.TextSize = 13
+	textoEstado.TextXAlignment = Enum.TextXAlignment.Left
+	textoEstado.Parent = holder
+
+	losangoUI = losango
+	statusUI = textoEstado
+end
+
+criarIndicadorUI()
+
+local btnAutoClickUI
+
+local function atualizarVisual(ligado)
+	if losangoUI then
+		losangoUI.BackgroundColor3 = ligado and Color3.fromRGB(35, 205, 95) or Color3.fromRGB(220, 45, 45)
+	end
+	if statusUI then
+		statusUI.Text = ligado and "ON" or "OFF"
+		statusUI.TextColor3 = ligado and Color3.fromRGB(70, 235, 120) or Color3.fromRGB(235, 65, 65)
+	end
+	if btnAutoClickUI then
+		btnAutoClickUI.Text = ligado and "AutoClick VOID (E): ON" or "AutoClick VOID (E): OFF"
+		btnAutoClickUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
+	end
+end
+
+local function setEstado(novoEstado)
+	ativo = novoEstado
+	if getgenv then
+		getgenv().UniversalTargetLockActive = ativo
+	end
+	atualizarVisual(ativo)
+	print("[Hitbox VOID]", ativo and "ATIVADO (ON)" or "DESATIVADO (OFF)")
+end
+
+if getgenv then
+	getgenv().SetTargetLockUI = atualizarVisual
+end
+
+atualizarVisual(false)
+
+local function getCharAndRoot(plr)
+	local char = plr and plr.Character
+	if not char then return nil, nil, nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then return char, nil, hum end
+	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	return char, root, hum
+end
+
+local function splitListaNomes(texto)
+	local lista = {}
+	if not texto or texto:match("^%s*$") then
+		return lista
+	end
+	for token in texto:gmatch("[^%s,;|]+") do
+		local limpo = token:lower()
+		if limpo ~= "" then
+			table.insert(lista, limpo)
+		end
+	end
+	return lista
+end
+
+local function combinaComLista(plr, lista)
+	if #lista == 0 then return false end
+	local nomeUser = (plr.Name or ""):lower()
+	local nomeDisplay = (plr.DisplayName or ""):lower()
+	for _, termo in ipairs(lista) do
+		if nomeUser:find(termo, 1, true) or nomeDisplay:find(termo, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function ehAmigoAMG(plr)
+	return combinaComLista(plr, splitListaNomes(amgTexto))
+end
+
+local function ehAlvoFocus(plr)
+	local listaFocus = splitListaNomes(focusTexto)
+	if #listaFocus == 0 then
+		return true
+	end
+	return combinaComLista(plr, listaFocus)
+end
+
+local function temFiltroFocusAtivo()
+	return #splitListaNomes(focusTexto) > 0
+end
+
+local function restaurarRoot(part)
+	local saved = originaisRoot[part]
+	if saved and part and part.Parent then
+		pcall(function()
+			part.Size = saved.Size
+			part.Transparency = saved.Transparency
+			part.CanCollide = saved.CanCollide
+		end)
+	end
+	originaisRoot[part] = nil
+	ultimoEstadoAplicado[part] = nil
+end
+
+local function limparMarcador(plr)
+	local m = marcadoresJogadores[plr]
+	if m and m.tagGui then
+		pcall(function() m.tagGui:Destroy() end)
+	end
+	marcadoresJogadores[plr] = nil
+end
+
+local function garantirMarcador(plr, root)
+	local m = marcadoresJogadores[plr]
+	if m and m.tagGui and m.tagGui.Parent then
+		if m.tagGui.Adornee ~= root then
+			m.tagGui.Adornee = root
+		end
+		return m
+	end
+	limparMarcador(plr)
+
+	local tagGui = Instance.new("BillboardGui")
+	tagGui.Name = "AMG_Focus_Indicator"
+	tagGui.Adornee = root
+	tagGui.Size = UDim2.new(0, 16, 0, 16)
+	tagGui.StudsOffset = Vector3.new(0, 3.6, 0)
+	tagGui.AlwaysOnTop = true
+	tagGui.Enabled = false
+	tagGui.Parent = parentGui
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 10, 0, 10)
+	dot.Position = UDim2.new(0.5, 0, 0.5, 0)
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Rotation = 45
+	dot.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
+	dot.BorderSizePixel = 0
+	dot.Parent = tagGui
+	Instance.new("UIStroke", dot).Color = Color3.fromRGB(255, 255, 255)
+
+	m = { tagGui = tagGui, tagDot = dot }
+	marcadoresJogadores[plr] = m
+	return m
+end
+
+local function sincronizarHitboxEMarcadores()
+	local rootsAtivos = {}
+	local transpAlvo = hitboxVisivel and HITBOX_TRANSPARENCIA_VISIVEL or 1
+	local assinaturaAlvo = string.format("%d|%.4f", hitboxSize, transpAlvo)
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			local char, root = getCharAndRoot(plr)
+			if char and root then
+				local isAMG = ehAmigoAMG(plr)
+				local isFocus = temFiltroFocusAtivo() and ehAlvoFocus(plr)
+
+				local m = garantirMarcador(plr, root)
+				if m and m.tagGui and m.tagDot then
+					if isAMG then
+						m.tagGui.Enabled = true
+						m.tagDot.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
+					elseif isFocus then
+						m.tagGui.Enabled = true
+						m.tagDot.BackgroundColor3 = Color3.fromRGB(230, 45, 45)
+					else
+						m.tagGui.Enabled = false
+					end
+				end
+
+				local deveExpandir = hitboxAtivo and (not isAMG) and ehAlvoFocus(plr)
+				if deveExpandir then
+					rootsAtivos[root] = true
+					if not originaisRoot[root] then
+						originaisRoot[root] = {
+							Size = root.Size,
+							Transparency = root.Transparency,
+							CanCollide = root.CanCollide
+						}
+					end
+					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
+						ultimoEstadoAplicado[root] = assinaturaAlvo
+						pcall(function()
+							root.CanCollide = false
+							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+							root.Color = COR_HITBOX_AURA
+							root.Transparency = transpAlvo
+						end)
+					end
+				end
+			end
+		end
+	end
+
+	for part in pairs(originaisRoot) do
+		if not rootsAtivos[part] then
+			restaurarRoot(part)
+		end
+	end
+
+	for plr in pairs(marcadoresJogadores) do
+		if plr.Parent ~= Players then
+			limparMarcador(plr)
+		end
+	end
+end
+
+local painelFrameUI
+
+local function aplicarBordaRoxa(instancia, espessura)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = ROXO_NEXUS
+	stroke.Thickness = espessura or 1.2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = instancia
+	return stroke
+end
+
+local function criarPainelHitbox()
+	if not parentGui then return end
+	local antigo = parentGui:FindFirstChild("UniversalCombatPanel")
+	if antigo then antigo:Destroy() end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "UniversalCombatPanel"
+	gui.ResetOnSpawn = false
+	gui.Parent = parentGui
+
+	local frame = Instance.new("Frame")
+	frame.Name = "MainPanel"
+	frame.Size = UDim2.new(0, 188, 0, 232)
+	frame.Position = UDim2.new(1, -202, 1, -288)
+	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+	frame.BorderSizePixel = 0
+	frame.Active = true
+	frame.Parent = gui
+
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+	aplicarBordaRoxa(frame, 1.5)
+
+	local titulo = Instance.new("TextLabel")
+	titulo.Name = "PanelTitle"
+	titulo.Size = UDim2.new(1, -16, 0, 18)
+	titulo.Position = UDim2.new(0, 8, 0, 6)
+	titulo.BackgroundTransparency = 1
+	titulo.Text = "Hitbox VOID"
+	titulo.TextColor3 = ROXO_NEXUS
+	titulo.Font = Enum.Font.GothamBold
+	titulo.TextSize = 13
+	titulo.TextXAlignment = Enum.TextXAlignment.Center
+	titulo.Parent = frame
+
+	local btnAuto = Instance.new("TextButton")
+	btnAuto.Size = UDim2.new(1, -16, 0, 24)
+	btnAuto.Position = UDim2.new(0, 8, 0, 28)
+	btnAuto.BackgroundColor3 = BOTAO_CINZA
+	btnAuto.Text = "AutoClick VOID (E): OFF"
+	btnAuto.TextColor3 = Color3.fromRGB(235, 235, 240)
+	btnAuto.Font = Enum.Font.GothamBold
+	btnAuto.TextSize = 11
+	btnAuto.BorderSizePixel = 0
+	btnAuto.Parent = frame
+	Instance.new("UICorner", btnAuto).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnAuto, 1)
+
+	local btnHit = Instance.new("TextButton")
+	btnHit.Size = UDim2.new(0.5, -10, 0, 24)
+	btnHit.Position = UDim2.new(0, 8, 0, 57)
+	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
+	btnHit.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btnHit.Font = Enum.Font.GothamBold
+	btnHit.TextSize = 10
+	btnHit.BorderSizePixel = 0
+	btnHit.Parent = frame
+	Instance.new("UICorner", btnHit).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnHit, 1)
+
+	local btnVis = Instance.new("TextButton")
+	btnVis.Size = UDim2.new(0.5, -10, 0, 24)
+	btnVis.Position = UDim2.new(0.5, 2, 0, 57)
+	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
+	btnVis.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btnVis.Font = Enum.Font.GothamBold
+	btnVis.TextSize = 10
+	btnVis.BorderSizePixel = 0
+	btnVis.Parent = frame
+	Instance.new("UICorner", btnVis).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnVis, 1)
+
+	local lblSize = Instance.new("TextLabel")
+	lblSize.Size = UDim2.new(1, -16, 0, 15)
+	lblSize.Position = UDim2.new(0, 8, 0, 86)
+	lblSize.BackgroundTransparency = 1
+	lblSize.Text = "Size: " .. tostring(hitboxSize)
+	lblSize.TextColor3 = Color3.fromRGB(225, 225, 235)
+	lblSize.Font = Enum.Font.GothamMedium
+	lblSize.TextSize = 11
+	lblSize.TextXAlignment = Enum.TextXAlignment.Left
+	lblSize.Parent = frame
+
+	local sliderBg = Instance.new("TextButton")
+	sliderBg.Name = "SizeSliderTrack"
+	sliderBg.Size = UDim2.new(1, -16, 0, 14)
+	sliderBg.Position = UDim2.new(0, 8, 0, 104)
+	sliderBg.BackgroundColor3 = BOTAO_CINZA
+	sliderBg.Text = ""
+	sliderBg.AutoButtonColor = false
+	sliderBg.BorderSizePixel = 0
+	sliderBg.Parent = frame
+	Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(sliderBg, 1)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(0.28, 0, 1, 0)
+	fill.BackgroundColor3 = ROXO_NEXUS
+	fill.BorderSizePixel = 0
+	fill.Parent = sliderBg
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.new(0, 14, 0, 14)
+	knob.Position = UDim2.new(0.28, 0, 0.5, 0)
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+	knob.BorderSizePixel = 0
+	knob.Parent = sliderBg
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	aplicarBordaRoxa(knob, 1)
+
+	local minSize, maxSize = 3, HITBOX_MAX_SLIDER
+	local arrastandoSlider = false
+	local arrastandoPainel = false
+	local offsetPainel = Vector2.zero
+
+	local function aplicarSliderPorPosicaoX(posX)
+		local largura = math.max(sliderBg.AbsoluteSize.X, 1)
+		local rel = math.clamp((posX - sliderBg.AbsolutePosition.X) / largura, 0, 1)
+		hitboxSize = math.clamp(math.floor((minSize + rel * (maxSize - minSize)) + 0.5), minSize, maxSize)
+		local pct = (hitboxSize - minSize) / (maxSize - minSize)
+		fill.Size = UDim2.new(pct, 0, 1, 0)
+		knob.Position = UDim2.new(pct, 0, 0.5, 0)
+		lblSize.Text = "Size: " .. tostring(hitboxSize)
+		sincronizarHitboxEMarcadores()
+	end
+
+	sliderBg.MouseButton1Down:Connect(function()
+		arrastandoSlider = true
+		arrastandoPainel = false
+		local mousePos = UserInputService:GetMouseLocation()
+		aplicarSliderPorPosicaoX(mousePos.X)
+	end)
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSlider then
+			arrastandoPainel = true
+			offsetPainel = Vector2.new(
+				input.Position.X - frame.AbsolutePosition.X,
+				input.Position.Y - frame.AbsolutePosition.Y
+			)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			if arrastandoSlider then
+				aplicarSliderPorPosicaoX(input.Position.X)
+			elseif arrastandoPainel then
+				frame.Position = UDim2.new(
+					0,
+					input.Position.X - offsetPainel.X,
+					0,
+					input.Position.Y - offsetPainel.Y
+				)
+			end
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			arrastandoSlider = false
+			arrastandoPainel = false
+		end
+	end)
+
+	local boxAMG = Instance.new("TextBox")
+	boxAMG.Size = UDim2.new(1, -16, 0, 24)
+	boxAMG.Position = UDim2.new(0, 8, 0, 125)
+	boxAMG.BackgroundColor3 = BOTAO_CINZA
+	boxAMG.Text = ""
+	boxAMG.PlaceholderText = "AMG (ex: ana pedro)..."
+	boxAMG.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
+	boxAMG.TextColor3 = Color3.fromRGB(240, 240, 245)
+	boxAMG.Font = Enum.Font.Gotham
+	boxAMG.TextSize = 11
+	boxAMG.ClearTextOnFocus = false
+	boxAMG.BorderSizePixel = 0
+	boxAMG.Parent = frame
+	Instance.new("UICorner", boxAMG).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(boxAMG, 1)
+
+	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
+		amgTexto = boxAMG.Text
+		sincronizarHitboxEMarcadores()
+	end)
+
+	local boxFocus = Instance.new("TextBox")
+	boxFocus.Size = UDim2.new(1, -16, 0, 24)
+	boxFocus.Position = UDim2.new(0, 8, 0, 154)
+	boxFocus.BackgroundColor3 = BOTAO_CINZA
+	boxFocus.Text = ""
+	boxFocus.PlaceholderText = "Focus (ex: alvo1 alvo2)..."
+	boxFocus.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
+	boxFocus.TextColor3 = Color3.fromRGB(240, 240, 245)
+	boxFocus.Font = Enum.Font.Gotham
+	boxFocus.TextSize = 11
+	boxFocus.ClearTextOnFocus = false
+	boxFocus.BorderSizePixel = 0
+	boxFocus.Parent = frame
+	Instance.new("UICorner", boxFocus).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(boxFocus, 1)
+
+	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
+		focusTexto = boxFocus.Text
+		sincronizarHitboxEMarcadores()
+	end)
+
+	local atalhos = Instance.new("TextLabel")
+	atalhos.Size = UDim2.new(1, -16, 0, 14)
+	atalhos.Position = UDim2.new(0, 8, 0, 183)
+	atalhos.BackgroundTransparency = 1
+	atalhos.Text = "Lock + Click: E  |  Painel: J"
+	atalhos.TextColor3 = Color3.fromRGB(165, 165, 178)
+	atalhos.Font = Enum.Font.Gotham
+	atalhos.TextSize = 10
+	atalhos.Parent = frame
+
+	local rodape = Instance.new("TextLabel")
+	rodape.Name = "FooterCredits"
+	rodape.Size = UDim2.new(1, -16, 0, 14)
+	rodape.Position = UDim2.new(0, 8, 1, -18)
+	rodape.BackgroundTransparency = 1
+	rodape.Text = "By: VOID Santos7x"
+	rodape.TextColor3 = Color3.fromRGB(255, 255, 255)
+	rodape.Font = Enum.Font.GothamMedium
+	rodape.TextSize = 9
+	rodape.Parent = frame
+
+	btnAuto.MouseButton1Click:Connect(function()
+		setEstado(not ativo)
+	end)
+
+	btnHit.MouseButton1Click:Connect(function()
+		hitboxAtivo = not hitboxAtivo
+		btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
+		btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		sincronizarHitboxEMarcadores()
+	end)
+
+	btnVis.MouseButton1Click:Connect(function()
+		hitboxVisivel = not hitboxVisivel
+		btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
+		btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
+		sincronizarHitboxEMarcadores()
+	end)
+
+	local pctInicial = math.clamp((hitboxSize - minSize) / (maxSize - minSize), 0, 1)
+	fill.Size = UDim2.new(pctInicial, 0, 1, 0)
+	knob.Position = UDim2.new(pctInicial, 0, 0.5, 0)
+	lblSize.Text = "Size: " .. tostring(hitboxSize)
+
+	painelFrameUI = frame
+	btnAutoClickUI = btnAuto
+end
+
+criarPainelHitbox()
+atualizarVisual(ativo)
+
+task.spawn(function()
+	while true do
+		local estaLigado = ativo
+		if getgenv and getgenv().UniversalTargetLockActive ~= nil then
+			estaLigado = getgenv().UniversalTargetLockActive
+		end
+
+		if estaLigado and ATIVAR_AUTOCLICK_JUNTO then
+			if typeof(mouse1click) == "function" then
+				pcall(mouse1click)
+			else
+				pcall(function()
+					VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+					VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+				end)
+			end
+			task.wait(DELAY_CLIQUE)
+		else
+			task.wait(0.05)
+		end
+	end
+end)
+
+local function distanciaPara(meuRoot, alvoRoot)
+	if not meuRoot or not alvoRoot or not alvoRoot.Parent then
+		return math.huge
+	end
+	return (alvoRoot.Position - meuRoot.Position).Magnitude
+end
+
+local function acharMaisProximo(meuRoot)
+	local melhorRoot = nil
+	local menorDist = DISTANCIA_MAXIMA
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
+			local _, r = getCharAndRoot(plr)
+			if r then
+				local d = (r.Position - meuRoot.Position).Magnitude
+				if d <= DISTANCIA_MAXIMA and d > 0.1 and d < menorDist then
+					menorDist = d
+					melhorRoot = r
+				end
+			end
+		end
+	end
+
+	return melhorRoot, menorDist
+end
+
+local function normalizarAngulo(ang)
+	while ang > math.pi do
+		ang -= math.pi * 2
+	end
+	while ang < -math.pi do
+		ang += math.pi * 2
+	end
+	return ang
+end
+
+local function aplicarFocoNoAlvo()
+	if getgenv and getgenv().UniversalTargetLockActive ~= nil then
+		ativo = getgenv().UniversalTargetLockActive
+	end
+	atualizarVisual(ativo)
+	if not ativo then return end
+
+	local _, meuRoot = getCharAndRoot(LocalPlayer)
+	if not meuRoot then return end
+
+	local maisProximo, distMaisProximo = acharMaisProximo(meuRoot)
+	local distAtual = distanciaPara(meuRoot, alvoAtual)
+
+	if not maisProximo then
+		alvoAtual = nil
+		return
+	elseif not alvoAtual or distAtual > DISTANCIA_MAXIMA then
+		alvoAtual = maisProximo
+	elseif maisProximo ~= alvoAtual and (distAtual - distMaisProximo) > MARGEM_TROCA then
+		alvoAtual = maisProximo
+	end
+
+	if not alvoAtual or not alvoAtual.Parent then return end
+
+	local meuPos = meuRoot.Position
+	local alvoPos = alvoAtual.Position
+	local dx = alvoPos.X - meuPos.X
+	local dz = alvoPos.Z - meuPos.Z
+
+	if not ORBITAR and (dx * dx + dz * dz) > 0.0025 then
+		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
+		local yawDesejado = math.atan2(-dx, -dz)
+		local diff = normalizarAngulo(yawDesejado - yawAtual)
+		local fator = math.clamp(FIRMEZA_GIRO, 0.05, 1)
+		local novoYaw = yawAtual + (diff * fator)
+
+		meuRoot.CFrame = CFrame.new(meuPos) * CFrame.fromEulerAnglesYXZ(0, novoYaw, 0)
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == TECLA_ATALHO then
+		setEstado(not ativo)
+	elseif input.KeyCode == TECLA_PAINEL and painelFrameUI then
+		painelFrameUI.Visible = not painelFrameUI.Visible
+	end
+end)
+
+pcall(function()
+	RunService:UnbindFromRenderStep("UniversalCharTargetLock")
+end)
+RunService.RenderStepped:Connect(aplicarFocoNoAlvo)
+RunService.Stepped:Connect(aplicarFocoNoAlvo)
+RunService.Heartbeat:Connect(aplicarFocoNoAlvo)
+
+task.spawn(function()
+	while true do
+		pcall(sincronizarHitboxEMarcadores)
+		task.wait(0.25)
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+	limparMarcador(plr)
+end)
+
+print("[Hitbox VOID] Botoes ativos agora ficam em Roxo Nexus!")
