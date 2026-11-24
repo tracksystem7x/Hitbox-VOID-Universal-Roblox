@@ -19,6 +19,7 @@ local LocalPlayer = Players.LocalPlayer
 -- CONFIGURACAO GERAL
 -- ==========================================
 local TECLA_ATALHO = Enum.KeyCode.E
+local TECLA_KILL_AURA = Enum.KeyCode.Q
 local TECLA_PAINEL = Enum.KeyCode.J
 local TECLA_ESPECIAL = Enum.KeyCode.G
 local JANELA_ESPECIAL_SEG = 1.2
@@ -92,8 +93,29 @@ local ultimoEstadoAplicado = {}
 local marcadoresJogadores = {}
 local animConexoes = {}
 local ultimoEspecialTick = 0
+local ultimoToggleKillAura = 0
 local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
+
+local btnKillAuraUI
+
+local function atualizarKillAuraUI(ligado)
+	if btnKillAuraUI then
+		btnKillAuraUI.Text = ligado and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF"
+		btnKillAuraUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
+	end
+end
+
+local function setKillAuraEstado(novoEstado)
+	local agora = os.clock()
+	if (agora - ultimoToggleKillAura) < 0.08 and novoEstado ~= killAuraAtivo then
+		return
+	end
+	ultimoToggleKillAura = agora
+	killAuraAtivo = novoEstado
+	atualizarKillAuraUI(killAuraAtivo)
+	print("[Hitbox VOID] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
+end
 
 local function getGuiParent()
 	local ok, res = pcall(function()
@@ -1037,7 +1059,7 @@ local function criarPainelHitbox()
 
 	local btnKillAura = criarBotaoPadrao(
 		pagCombat,
-		killAuraAtivo and "Kill Aura: ON" or "Kill Aura: OFF",
+		killAuraAtivo and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF",
 		UDim2.new(0, 8, 0, 144),
 		UDim2.new(1, -16, 0, 21),
 		11
@@ -1156,10 +1178,10 @@ local function criarPainelHitbox()
 	)
 
 	local infoAtalhos = Instance.new("TextLabel")
-	infoAtalhos.Size = UDim2.new(1, -16, 0, 52)
+	infoAtalhos.Size = UDim2.new(1, -16, 0, 66)
 	infoAtalhos.Position = UDim2.new(0, 8, 0, 36)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "Gatilho: E\nEsconder/Mostrar Painel: J"
+	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J"
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
 	infoAtalhos.Font = Enum.Font.GothamMedium
 	infoAtalhos.TextSize = 11
@@ -1264,9 +1286,7 @@ local function criarPainelHitbox()
 	end)
 
 	btnKillAura.MouseButton1Click:Connect(function()
-		killAuraAtivo = not killAuraAtivo
-		btnKillAura.Text = killAuraAtivo and "Kill Aura: ON" or "Kill Aura: OFF"
-		btnKillAura.BackgroundColor3 = killAuraAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		setKillAuraEstado(not killAuraAtivo)
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -1312,6 +1332,7 @@ local function criarPainelHitbox()
 	selecionarAba("Combat")
 	painelFrameUI = frame
 	btnAutoClickUI = btnAuto
+	btnKillAuraUI = btnKillAura
 end
 
 criarPainelHitbox()
@@ -1430,6 +1451,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == TECLA_ESPECIAL then
 		ultimoEspecialTick = os.clock()
+	elseif input.KeyCode == TECLA_KILL_AURA then
+		setKillAuraEstado(not killAuraAtivo)
 	elseif input.KeyCode == TECLA_ATALHO then
 		setEstado(not ativo)
 	elseif input.KeyCode == TECLA_PAINEL and painelFrameUI then
@@ -1468,4 +1491,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Carregado com Kill Aura livre de giro!")
+print("[Hitbox VOID] Carregado com Kill Aura no atalho Q!")
