@@ -30,7 +30,9 @@ local FIRMEZA_GIRO = 1.0
 local ORBITAR = false
 
 local DISTANCIA_KILL_AURA = 18
-local DELAY_KILL_AURA = 0.01
+local DELAY_KILL_AURA = 0.015
+local KILL_AURA_PULSO_ALVO = true
+local DURACAO_PULSO_MIRA = 0.012
 
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
@@ -94,6 +96,8 @@ local marcadoresJogadores = {}
 local animConexoes = {}
 local ultimoEspecialTick = 0
 local ultimoToggleKillAura = 0
+local pulsoMiraAte = 0
+local yawAntesPulso = nil
 local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
 
@@ -113,6 +117,10 @@ local function setKillAuraEstado(novoEstado)
 	end
 	ultimoToggleKillAura = agora
 	killAuraAtivo = novoEstado
+	if not killAuraAtivo then
+		pulsoMiraAte = 0
+		yawAntesPulso = nil
+	end
 	atualizarKillAuraUI(killAuraAtivo)
 	print("[Hitbox VOID] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
 end
@@ -653,19 +661,53 @@ local function normalizarAngulo(ang)
 	return ang
 end
 
-local function haAlvoNoRaioKillAura(meuRoot, raioMax)
+local function acharMaisProximoKillAura(meuRoot, raioMax)
+	local melhorRoot = nil
+	local menorDist = raioMax
+
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
 			local _, r = getCharAndRoot(plr)
-			if r and (r.Position - meuRoot.Position).Magnitude <= raioMax then
-				return true
+			if r then
+				local d = (r.Position - meuRoot.Position).Magnitude
+				if d <= raioMax and d > 0.1 and d < menorDist then
+					menorDist = d
+					melhorRoot = r
+				end
 			end
 		end
 	end
-	return false
+
+	return melhorRoot, menorDist
 end
 
 local function dispararCicloKillAura()
+	local _, meuRoot = getCharAndRoot(LocalPlayer)
+	if not meuRoot then return end
+
+	local alvoProximo = acharMaisProximoKillAura(meuRoot, DISTANCIA_KILL_AURA)
+	if not alvoProximo then
+		pulsoMiraAte = 0
+		yawAntesPulso = nil
+		return
+	end
+
+	if KILL_AURA_PULSO_ALVO then
+		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
+		if yawAntesPulso == nil then
+			yawAntesPulso = yawAtual
+		end
+		local dx = alvoProximo.Position.X - meuRoot.Position.X
+		local dz = alvoProximo.Position.Z - meuRoot.Position.Z
+		if (dx * dx + dz * dz) > 0.0025 then
+			local yawAlvo = math.atan2(-dx, -dz)
+			pcall(function()
+				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
+			end)
+			pulsoMiraAte = os.clock() + DURACAO_PULSO_MIRA
+		end
+	end
+
 	local char = LocalPlayer.Character
 	if char then
 		local tool = char:FindFirstChildOfClass("Tool")
@@ -684,6 +726,19 @@ local function dispararCicloKillAura()
 			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 		end)
 	end
+end
+
+local function restaurarPulsoMiraKillAura()
+	if not KILL_AURA_PULSO_ALVO or yawAntesPulso == nil then return end
+	if os.clock() < pulsoMiraAte then return end
+
+	local _, meuRoot = getCharAndRoot(LocalPlayer)
+	if meuRoot then
+		pcall(function()
+			meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAntesPulso, 0)
+		end)
+	end
+	yawAntesPulso = nil
 end
 
 local function restaurarRoot(part)
@@ -1343,7 +1398,7 @@ task.spawn(function()
 	while true do
 		if killAuraAtivo and not UserInputService:GetFocusedTextBox() then
 			local _, meuRoot = getCharAndRoot(LocalPlayer)
-			if meuRoot and haAlvoNoRaioKillAura(meuRoot, DISTANCIA_KILL_AURA) then
+			if meuRoot and acharMaisProximoKillAura(meuRoot, DISTANCIA_KILL_AURA) then
 				dispararCicloKillAura()
 			end
 			task.wait(DELAY_KILL_AURA)
@@ -1465,6 +1520,7 @@ pcall(function()
 end)
 RunService.RenderStepped:Connect(function()
 	aplicarFocoNoAlvo()
+	restaurarPulsoMiraKillAura()
 end)
 RunService.Stepped:Connect(function()
 	aplicarFocoNoAlvo()
@@ -1491,4 +1547,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Carregado com Kill Aura no atalho Q!")
+print("[Hitbox VOID] Carregado com Kill Aura em pulso rapido no Q!")
