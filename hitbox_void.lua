@@ -28,12 +28,11 @@ local MARGEM_TROCA = 3.5
 local FIRMEZA_GIRO = 1.0
 local ORBITAR = false
 
+local DISTANCIA_KILL_AURA = 18
+local DELAY_KILL_AURA = 0.01
+
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
-
-local DELAY_AUTOGRAB = 0.06
-local DISTANCIA_AUTOGRAB = 14
-local AUTOGRAB_SO_ALVO_PERTO = false
 
 local WALKSPEED_BASE = 16
 
@@ -42,7 +41,7 @@ local ANTI_RAGDOLL_PADRAO_ATIVO = false
 local ANTI_GRAB_RAG_PADRAO_ATIVO = false
 local DEATH_TP_PADRAO_ATIVO = false
 local NO_SLOW_PADRAO_ATIVO = false
-local AUTO_GRAB_PADRAO_ATIVO = false
+local KILL_AURA_PADRAO_ATIVO = false
 local NO_ANIMATION_PADRAO_ATIVO = false
 local HUD_LOSANGO_PADRAO_VISIVEL = true
 local SPEED_CFRAME_PADRAO_ATIVO = false
@@ -75,7 +74,7 @@ local antiRagdollAtivo = ANTI_RAGDOLL_PADRAO_ATIVO
 local antiGrabRagAtivo = ANTI_GRAB_RAG_PADRAO_ATIVO
 local deathTpAtivo = DEATH_TP_PADRAO_ATIVO
 local noSlowAtivo = NO_SLOW_PADRAO_ATIVO
-local autoGrabAtivo = AUTO_GRAB_PADRAO_ATIVO
+local killAuraAtivo = KILL_AURA_PADRAO_ATIVO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
 local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
@@ -622,6 +621,49 @@ local function temFiltroFocusAtivo()
 	return #splitListaNomes(focusTexto) > 0
 end
 
+local function normalizarAngulo(ang)
+	while ang > math.pi do
+		ang -= math.pi * 2
+	end
+	while ang < -math.pi do
+		ang += math.pi * 2
+	end
+	return ang
+end
+
+local function haAlvoNoRaioKillAura(meuRoot, raioMax)
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
+			local _, r = getCharAndRoot(plr)
+			if r and (r.Position - meuRoot.Position).Magnitude <= raioMax then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function dispararCicloKillAura()
+	local char = LocalPlayer.Character
+	if char then
+		local tool = char:FindFirstChildOfClass("Tool")
+		if tool then
+			pcall(function()
+				tool:Activate()
+			end)
+		end
+	end
+
+	if typeof(mouse1click) == "function" then
+		pcall(mouse1click)
+	else
+		pcall(function()
+			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+		end)
+	end
+end
+
 local function restaurarRoot(part)
 	local saved = originaisRoot[part]
 	if saved and part and part.Parent then
@@ -860,7 +902,7 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 200, 0, 430)
+	frame.Size = UDim2.new(0, 200, 0, 434)
 	frame.Position = POSICAO_PAINEL_PADRAO
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
@@ -947,12 +989,12 @@ local function criarPainelHitbox()
 	-- ABA 1: COMBAT
 	-- ==========================================
 	local pagCombat = abasPaginas.Combat
-	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 22), 11)
+	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 21), 11)
 	local btnLock = criarBotaoPadrao(
 		pagCombat,
 		targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF",
-		UDim2.new(0, 8, 0, 25),
-		UDim2.new(1, -16, 0, 22),
+		UDim2.new(0, 8, 0, 24),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
 	btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -960,8 +1002,8 @@ local function criarPainelHitbox()
 	local btnAntiRagdoll = criarBotaoPadrao(
 		pagCombat,
 		antiRagdollAtivo and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF",
-		UDim2.new(0, 8, 0, 50),
-		UDim2.new(1, -16, 0, 22),
+		UDim2.new(0, 8, 0, 48),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
 	btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -969,8 +1011,8 @@ local function criarPainelHitbox()
 	local btnAntiGrabRag = criarBotaoPadrao(
 		pagCombat,
 		antiGrabRagAtivo and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF",
-		UDim2.new(0, 8, 0, 75),
-		UDim2.new(1, -16, 0, 22),
+		UDim2.new(0, 8, 0, 72),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
 	btnAntiGrabRag.BackgroundColor3 = antiGrabRagAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -978,8 +1020,8 @@ local function criarPainelHitbox()
 	local btnDeathTp = criarBotaoPadrao(
 		pagCombat,
 		deathTpAtivo and "Death TP: ON" or "Death TP: OFF",
-		UDim2.new(0, 8, 0, 100),
-		UDim2.new(1, -16, 0, 22),
+		UDim2.new(0, 8, 0, 96),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
 	btnDeathTp.BackgroundColor3 = deathTpAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -987,26 +1029,26 @@ local function criarPainelHitbox()
 	local btnNoSlow = criarBotaoPadrao(
 		pagCombat,
 		noSlowAtivo and "No Slow: ON" or "No Slow: OFF",
-		UDim2.new(0, 8, 0, 125),
-		UDim2.new(1, -16, 0, 22),
+		UDim2.new(0, 8, 0, 120),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
 	btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local btnAutoGrab = criarBotaoPadrao(
+	local btnKillAura = criarBotaoPadrao(
 		pagCombat,
-		autoGrabAtivo and "AutoGrab: ON" or "AutoGrab: OFF",
-		UDim2.new(0, 8, 0, 150),
-		UDim2.new(1, -16, 0, 22),
+		killAuraAtivo and "Kill Aura: ON" or "Kill Aura: OFF",
+		UDim2.new(0, 8, 0, 144),
+		UDim2.new(1, -16, 0, 21),
 		11
 	)
-	btnAutoGrab.BackgroundColor3 = autoGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnKillAura.BackgroundColor3 = killAuraAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
 	local btnHit = criarBotaoPadrao(
 		pagCombat,
 		hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF",
-		UDim2.new(0, 8, 0, 175),
-		UDim2.new(0.5, -10, 0, 22),
+		UDim2.new(0, 8, 0, 168),
+		UDim2.new(0.5, -10, 0, 21),
 		10
 	)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -1014,19 +1056,19 @@ local function criarPainelHitbox()
 	local btnVis = criarBotaoPadrao(
 		pagCombat,
 		hitboxVisivel and "Visivel: Sim" or "Visivel: Nao",
-		UDim2.new(0.5, 2, 0, 175),
-		UDim2.new(0.5, -10, 0, 22),
+		UDim2.new(0.5, 2, 0, 168),
+		UDim2.new(0.5, -10, 0, 21),
 		10
 	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 200, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 192, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
 		hitboxSize = novoSize
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 235), 21)
-	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 259), 21)
+	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 226), 20)
+	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 249), 20)
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
@@ -1221,10 +1263,10 @@ local function criarPainelHitbox()
 		btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
-	btnAutoGrab.MouseButton1Click:Connect(function()
-		autoGrabAtivo = not autoGrabAtivo
-		btnAutoGrab.Text = autoGrabAtivo and "AutoGrab: ON" or "AutoGrab: OFF"
-		btnAutoGrab.BackgroundColor3 = autoGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnKillAura.MouseButton1Click:Connect(function()
+		killAuraAtivo = not killAuraAtivo
+		btnKillAura.Text = killAuraAtivo and "Kill Aura: ON" or "Kill Aura: OFF"
+		btnKillAura.BackgroundColor3 = killAuraAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -1276,39 +1318,14 @@ criarPainelHitbox()
 atualizarVisual(ativo)
 sincronizarNoAnimation()
 
-local function haAlvoValidoPertoParaGrab(meuRoot)
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
-			local _, r = getCharAndRoot(plr)
-			if r and (r.Position - meuRoot.Position).Magnitude <= DISTANCIA_AUTOGRAB then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function dispararTeclaGrab()
-	ultimoEspecialTick = os.clock()
-	pcall(function()
-		VirtualInputManager:SendKeyEvent(true, TECLA_ESPECIAL, false, game)
-		task.wait(0.01)
-		VirtualInputManager:SendKeyEvent(false, TECLA_ESPECIAL, false, game)
-	end)
-end
-
 task.spawn(function()
 	while true do
-		if autoGrabAtivo and not UserInputService:GetFocusedTextBox() then
+		if killAuraAtivo and not UserInputService:GetFocusedTextBox() then
 			local _, meuRoot = getCharAndRoot(LocalPlayer)
-			local podeDisparar = meuRoot ~= nil
-			if podeDisparar and AUTOGRAB_SO_ALVO_PERTO then
-				podeDisparar = haAlvoValidoPertoParaGrab(meuRoot)
+			if meuRoot and haAlvoNoRaioKillAura(meuRoot, DISTANCIA_KILL_AURA) then
+				dispararCicloKillAura()
 			end
-			if podeDisparar then
-				dispararTeclaGrab()
-			end
-			task.wait(DELAY_AUTOGRAB)
+			task.wait(DELAY_KILL_AURA)
 		else
 			task.wait(0.05)
 		end
@@ -1363,16 +1380,6 @@ local function acharMaisProximo(meuRoot)
 	end
 
 	return melhorRoot, menorDist
-end
-
-local function normalizarAngulo(ang)
-	while ang > math.pi do
-		ang -= math.pi * 2
-	end
-	while ang < -math.pi do
-		ang += math.pi * 2
-	end
-	return ang
 end
 
 local function aplicarFocoNoAlvo()
@@ -1461,4 +1468,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Carregado com AutoGrab!")
+print("[Hitbox VOID] Carregado com Kill Aura livre de giro!")
