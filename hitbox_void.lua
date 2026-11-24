@@ -32,7 +32,8 @@ local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
-local DISTANCIA_PUXAO_GRAB = 18
+local DISTANCIA_PUXAO_GRAB = 14
+local DURACAO_RETORNO_GRAB = 0.85
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local ANTI_RAGDOLL_PADRAO_ATIVO = false
@@ -449,6 +450,61 @@ end
 -- ==========================================
 -- ANTI GRAB (RETORNA PARA A POSICAO DA QUADRA AO SER PUXADO/AGRADO)
 -- ==========================================
+local function haJogadorPerto(meuPos, raio)
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			local _, r = getCharAndRoot(plr)
+			if r and (r.Position - meuPos).Magnitude <= raio then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function temSinalDeGrabNoPersonagem(char, hum)
+	if hum and hum.PlatformStand then
+		return true
+	end
+	for _, desc in ipairs(char:GetDescendants()) do
+		if desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") or desc:IsA("AlignPosition") or desc:IsA("WeldConstraint") then
+			local low = desc.Name:lower()
+			if low:find("grab") or low:find("catch") or low:find("hold") or low:find("room") or low:find("tp") or low:find("arena") then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function forcarRetornoQuadra(root, hum, destino)
+	pcall(function()
+		if hum and hum.Sit then
+			hum.Sit = false
+		end
+		if hum and hum.PlatformStand then
+			hum.PlatformStand = false
+		end
+		for _, desc in ipairs(root.Parent:GetDescendants()) do
+			if desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") or desc:IsA("AlignPosition") then
+				local low = desc.Name:lower()
+				if low:find("grab") or low:find("catch") or low:find("hold") or low:find("throw") or low:find("launch") then
+					desc:Destroy()
+				end
+			elseif desc:IsA("WeldConstraint") or desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") then
+				local low = desc.Name:lower()
+				if low:find("grab") or low:find("catch") or low:find("hold") or low:find("ragdoll") then
+					desc.Enabled = false
+				end
+			end
+		end
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.RotVelocity = Vector3.zero
+		root.CFrame = destino
+	end)
+end
+
 local function aplicarAntiGrab()
 	if not antiGrabAtivo then
 		retornoGrabAte = 0
@@ -461,42 +517,27 @@ local function aplicarAntiGrab()
 	local agora = os.clock()
 	local posAtual = root.CFrame
 
-	-- Se ja estamos num ciclo de retorno de grab, puxa de volta para a posicao salva
 	if agora < retornoGrabAte and ultimaPosicaoSeguraQuadra then
-		pcall(function()
-			if hum.Sit then
-				hum.Sit = false
-			end
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
-			root.CFrame = ultimaPosicaoSeguraQuadra
-		end)
+		forcarRetornoQuadra(root, hum, ultimaPosicaoSeguraQuadra)
 		return
 	end
 
-	-- Detecta deslocamento brusco (grab / teleporte para outra sala) quando havia uma posicao segura anterior
 	if ultimaPosicaoSeguraQuadra then
 		local saltoDist = (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude
-		if saltoDist >= DISTANCIA_PUXAO_GRAB then
-			retornoGrabAte = agora + 0.35
-			pcall(function()
-				if hum.Sit then
-					hum.Sit = false
-				end
-				root.AssemblyLinearVelocity = Vector3.zero
-				root.AssemblyAngularVelocity = Vector3.zero
-				root.CFrame = ultimaPosicaoSeguraQuadra
-			end)
+		local sinalGrab = temSinalDeGrabNoPersonagem(char, hum)
+
+		if saltoDist >= DISTANCIA_PUXAO_GRAB or (sinalGrab and haJogadorPerto(ultimaPosicaoSeguraQuadra.Position, 16)) then
+			retornoGrabAte = agora + DURACAO_RETORNO_GRAB
+			forcarRetornoQuadra(root, hum, ultimaPosicaoSeguraQuadra)
 			return
 		end
 	end
 
-	-- Atualiza a ultima posicao valida na quadra apenas quando nao esta caindo livremente ou sentado
 	local estado = hum:GetState()
 	if not hum.Sit
-		and estado ~= Enum.HumanoidStateType.Freefall
+		and not hum.PlatformStand
 		and estado ~= Enum.HumanoidStateType.Physics
-		and root.AssemblyLinearVelocity.Magnitude < 65 then
+		and root.AssemblyLinearVelocity.Magnitude < 55 then
 		ultimaPosicaoSeguraQuadra = posAtual
 	end
 end
@@ -1478,4 +1519,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Anti Grab adicionado na aba Combat!")
+print("[Hitbox VOID] Anti Grab reforçado na aba Combat!")
