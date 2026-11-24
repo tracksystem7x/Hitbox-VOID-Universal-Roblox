@@ -33,7 +33,7 @@ local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
 local DISTANCIA_PUXAO_GRAB = 8
-local DURACAO_RETORNO_GRAB = 1.15
+local DURACAO_RETORNO_GRAB = 1.35
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local ANTI_RAGDOLL_PADRAO_ATIVO = false
@@ -95,6 +95,7 @@ local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
 local ultimaPosicaoSeguraQuadra = nil
 local posicaoAnteriorQuadra = nil
+local destinoRetornoTravado = nil
 local retornoGrabAte = 0
 local ultimoLogGrab = 0
 
@@ -359,6 +360,7 @@ local function conectarMonitorMorte(char)
 	morteRegistradaNestaVida = false
 	ultimaPosicaoSeguraQuadra = nil
 	posicaoAnteriorQuadra = nil
+	destinoRetornoTravado = nil
 	retornoGrabAte = 0
 	if not char then return end
 
@@ -508,19 +510,32 @@ local function forcarRetornoQuadra(root, hum, destino)
 	end)
 end
 
-local function obterDestinoRetorno()
-	if posicaoAnteriorQuadra and ultimaPosicaoSeguraQuadra then
-		local distEntreSalvos = (ultimaPosicaoSeguraQuadra.Position - posicaoAnteriorQuadra.Position).Magnitude
-		if distEntreSalvos >= DISTANCIA_PUXAO_GRAB then
-			return posicaoAnteriorQuadra
+local function escolherDestinoRetorno(posAtual)
+	local candidatos = {}
+	if posicaoAnteriorQuadra then
+		table.insert(candidatos, posicaoAnteriorQuadra)
+	end
+	if ultimaPosicaoSeguraQuadra then
+		table.insert(candidatos, ultimaPosicaoSeguraQuadra)
+	end
+
+	local melhorDestino = nil
+	local maiorDistanciaDaSala = -1
+	for _, cand in ipairs(candidatos) do
+		local dist = (cand.Position - posAtual.Position).Magnitude
+		if dist >= DISTANCIA_PUXAO_GRAB and dist > maiorDistanciaDaSala then
+			maiorDistanciaDaSala = dist
+			melhorDestino = cand
 		end
 	end
-	return ultimaPosicaoSeguraQuadra or posicaoAnteriorQuadra
+
+	return melhorDestino or ultimaPosicaoSeguraQuadra or posicaoAnteriorQuadra
 end
 
 local function aplicarAntiGrab()
 	if not antiGrabAtivo then
 		retornoGrabAte = 0
+		destinoRetornoTravado = nil
 		return
 	end
 
@@ -529,11 +544,12 @@ local function aplicarAntiGrab()
 
 	local agora = os.clock()
 	local posAtual = root.CFrame
-	local destino = obterDestinoRetorno()
 
-	if agora < retornoGrabAte and destino then
-		forcarRetornoQuadra(root, hum, destino)
+	if agora < retornoGrabAte and destinoRetornoTravado then
+		forcarRetornoQuadra(root, hum, destinoRetornoTravado)
 		return
+	else
+		destinoRetornoTravado = nil
 	end
 
 	if ultimaPosicaoSeguraQuadra then
@@ -541,9 +557,11 @@ local function aplicarAntiGrab()
 		local sinalGrab = temSinalDeGrabNoPersonagem(char, hum)
 
 		if saltoDist >= DISTANCIA_PUXAO_GRAB or (sinalGrab and haJogadorPerto(ultimaPosicaoSeguraQuadra.Position, 20)) then
+			destinoRetornoTravado = escolherDestinoRetorno(posAtual)
 			retornoGrabAte = agora + DURACAO_RETORNO_GRAB
-			destino = obterDestinoRetorno() or ultimaPosicaoSeguraQuadra
-			forcarRetornoQuadra(root, hum, destino)
+			if destinoRetornoTravado then
+				forcarRetornoQuadra(root, hum, destinoRetornoTravado)
+			end
 			if (agora - ultimoLogGrab) > 1 then
 				ultimoLogGrab = agora
 				print("[Hitbox VOID] Anti Grab disparou! Salto:", math.floor(saltoDist), "Sinal:", tostring(sinalGrab))
@@ -557,7 +575,7 @@ local function aplicarAntiGrab()
 		and not hum.PlatformStand
 		and estado ~= Enum.HumanoidStateType.Physics
 		and root.AssemblyLinearVelocity.Magnitude < 45 then
-		if not ultimaPosicaoSeguraQuadra or (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude >= 2.5 then
+		if not ultimaPosicaoSeguraQuadra or (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude >= 3 then
 			posicaoAnteriorQuadra = ultimaPosicaoSeguraQuadra
 			ultimaPosicaoSeguraQuadra = posAtual
 		end
@@ -1513,7 +1531,10 @@ end)
 pcall(function()
 	RunService:UnbindFromRenderStep("UniversalCharTargetLock")
 end)
-RunService.RenderStepped:Connect(aplicarFocoNoAlvo)
+RunService.RenderStepped:Connect(function()
+	aplicarFocoNoAlvo()
+	aplicarAntiGrab()
+end)
 RunService.Stepped:Connect(function()
 	aplicarFocoNoAlvo()
 	aplicarNoSlow()
@@ -1541,4 +1562,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Anti Grab ajustado na aba Combat!")
+print("[Hitbox VOID] Anti Grab reforçado no RenderStepped!")
