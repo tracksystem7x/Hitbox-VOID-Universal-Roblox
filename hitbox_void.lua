@@ -28,6 +28,7 @@ local ORBITAR = false
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
+local TARGET_LOCK_PADRAO_HABILITADO = true -- Habilita Lock junto ao E quando E esta ON
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
 local HITBOX_MAX_SLIDER = 27
@@ -46,7 +47,8 @@ if getgenv then
 	getgenv().UniversalTargetLockActive = false
 end
 
-local ativo = false
+local ativo = false -- Estado do gatilho E (AutoClick + Lock se habilitado)
+local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
 local alvoAtual = nil
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
@@ -147,6 +149,9 @@ end
 
 local function setEstado(novoEstado)
 	ativo = novoEstado
+	if not ativo then
+		alvoAtual = nil
+	end
 	if getgenv then
 		getgenv().UniversalTargetLockActive = ativo
 	end
@@ -351,8 +356,8 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 188, 0, 232)
-	frame.Position = UDim2.new(1, -202, 1, -288)
+	frame.Size = UDim2.new(0, 188, 0, 260)
+	frame.Position = UDim2.new(1, -202, 1, -316)
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
 	frame.Active = true
@@ -386,9 +391,23 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnAuto).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnAuto, 1)
 
+	-- Botao Target Lock (habilita o lock quando o gatilho E estiver ativo; nao trava sozinho)
+	local btnLock = Instance.new("TextButton")
+	btnLock.Size = UDim2.new(1, -16, 0, 24)
+	btnLock.Position = UDim2.new(0, 8, 0, 56)
+	btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
+	btnLock.Text = targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF"
+	btnLock.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btnLock.Font = Enum.Font.GothamBold
+	btnLock.TextSize = 11
+	btnLock.BorderSizePixel = 0
+	btnLock.Parent = frame
+	Instance.new("UICorner", btnLock).CornerRadius = UDim.new(0, 4)
+	aplicarBordaRoxa(btnLock, 1)
+
 	local btnHit = Instance.new("TextButton")
 	btnHit.Size = UDim2.new(0.5, -10, 0, 24)
-	btnHit.Position = UDim2.new(0, 8, 0, 57)
+	btnHit.Position = UDim2.new(0, 8, 0, 85)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
 	btnHit.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -401,7 +420,7 @@ local function criarPainelHitbox()
 
 	local btnVis = Instance.new("TextButton")
 	btnVis.Size = UDim2.new(0.5, -10, 0, 24)
-	btnVis.Position = UDim2.new(0.5, 2, 0, 57)
+	btnVis.Position = UDim2.new(0.5, 2, 0, 85)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 	btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
 	btnVis.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -414,7 +433,7 @@ local function criarPainelHitbox()
 
 	local lblSize = Instance.new("TextLabel")
 	lblSize.Size = UDim2.new(1, -16, 0, 15)
-	lblSize.Position = UDim2.new(0, 8, 0, 86)
+	lblSize.Position = UDim2.new(0, 8, 0, 114)
 	lblSize.BackgroundTransparency = 1
 	lblSize.Text = "Size: " .. tostring(hitboxSize)
 	lblSize.TextColor3 = Color3.fromRGB(225, 225, 235)
@@ -426,7 +445,7 @@ local function criarPainelHitbox()
 	local sliderBg = Instance.new("TextButton")
 	sliderBg.Name = "SizeSliderTrack"
 	sliderBg.Size = UDim2.new(1, -16, 0, 14)
-	sliderBg.Position = UDim2.new(0, 8, 0, 104)
+	sliderBg.Position = UDim2.new(0, 8, 0, 132)
 	sliderBg.BackgroundColor3 = BOTAO_CINZA
 	sliderBg.Text = ""
 	sliderBg.AutoButtonColor = false
@@ -509,7 +528,7 @@ local function criarPainelHitbox()
 
 	local boxAMG = Instance.new("TextBox")
 	boxAMG.Size = UDim2.new(1, -16, 0, 24)
-	boxAMG.Position = UDim2.new(0, 8, 0, 125)
+	boxAMG.Position = UDim2.new(0, 8, 0, 153)
 	boxAMG.BackgroundColor3 = BOTAO_CINZA
 	boxAMG.Text = ""
 	boxAMG.PlaceholderText = "AMG (ex: ana pedro)..."
@@ -530,7 +549,7 @@ local function criarPainelHitbox()
 
 	local boxFocus = Instance.new("TextBox")
 	boxFocus.Size = UDim2.new(1, -16, 0, 24)
-	boxFocus.Position = UDim2.new(0, 8, 0, 154)
+	boxFocus.Position = UDim2.new(0, 8, 0, 182)
 	boxFocus.BackgroundColor3 = BOTAO_CINZA
 	boxFocus.Text = ""
 	boxFocus.PlaceholderText = "Focus (ex: alvo1 alvo2)..."
@@ -551,9 +570,9 @@ local function criarPainelHitbox()
 
 	local atalhos = Instance.new("TextLabel")
 	atalhos.Size = UDim2.new(1, -16, 0, 14)
-	atalhos.Position = UDim2.new(0, 8, 0, 183)
+	atalhos.Position = UDim2.new(0, 8, 0, 211)
 	atalhos.BackgroundTransparency = 1
-	atalhos.Text = "Lock + Click: E  |  Painel: J"
+	atalhos.Text = "Gatilho: E  |  Painel: J"
 	atalhos.TextColor3 = Color3.fromRGB(165, 165, 178)
 	atalhos.Font = Enum.Font.Gotham
 	atalhos.TextSize = 10
@@ -572,6 +591,15 @@ local function criarPainelHitbox()
 
 	btnAuto.MouseButton1Click:Connect(function()
 		setEstado(not ativo)
+	end)
+
+	btnLock.MouseButton1Click:Connect(function()
+		targetLockHabilitadoNoPainel = not targetLockHabilitadoNoPainel
+		btnLock.Text = targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF"
+		btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
+		if not targetLockHabilitadoNoPainel then
+			alvoAtual = nil
+		end
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -665,7 +693,12 @@ local function aplicarFocoNoAlvo()
 		ativo = getgenv().UniversalTargetLockActive
 	end
 	atualizarVisual(ativo)
-	if not ativo then return end
+
+	-- So aplica o Target Lock quando o gatilho E estiver ativo E o botao Target Lock estiver ON no painel
+	if not ativo or not targetLockHabilitadoNoPainel then
+		alvoAtual = nil
+		return
+	end
 
 	local _, meuRoot = getCharAndRoot(LocalPlayer)
 	if not meuRoot then return end
@@ -727,4 +760,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Botoes ativos agora ficam em Roxo Nexus!")
+print("[Hitbox VOID] Botao Target Lock adicionado ao painel (ativado junto ao E)!")
