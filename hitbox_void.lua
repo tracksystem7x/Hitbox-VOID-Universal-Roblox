@@ -34,9 +34,9 @@ local DELAY_CLIQUE = 0.001
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local NO_ANIMATION_PADRAO_ATIVO = false
 local SPEED_CFRAME_PADRAO_ATIVO = false
-local SPEED_CFRAME_PADRAO = 24 -- Studs por segundo via CFrame
-local SPEED_CFRAME_MIN = 8
-local SPEED_CFRAME_MAX = 80
+local SPEED_CFRAME_PADRAO = 1
+local SPEED_CFRAME_MIN = 1
+local SPEED_CFRAME_MAX = 200
 
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
@@ -684,7 +684,7 @@ local function criarPainelHitbox()
 	Instance.new("UICorner", btnVis).CornerRadius = UDim.new(0, 4)
 	aplicarBordaRoxa(btnVis, 1)
 
-	-- Slider Speed (CFrame)
+	-- Slider Speed (CFrame: 1 ate 200)
 	local lblSpeed = Instance.new("TextLabel")
 	lblSpeed.Size = UDim2.new(1, -16, 0, 14)
 	lblSpeed.Position = UDim2.new(0, 8, 0, 169)
@@ -709,7 +709,7 @@ local function criarPainelHitbox()
 	aplicarBordaRoxa(speedSliderBg, 1)
 
 	local speedFill = Instance.new("Frame")
-	speedFill.Size = UDim2.new(0.22, 0, 1, 0)
+	speedFill.Size = UDim2.new(0, 0, 1, 0)
 	speedFill.BackgroundColor3 = ROXO_NEXUS
 	speedFill.BorderSizePixel = 0
 	speedFill.Parent = speedSliderBg
@@ -717,7 +717,7 @@ local function criarPainelHitbox()
 
 	local speedKnob = Instance.new("Frame")
 	speedKnob.Size = UDim2.new(0, 13, 0, 13)
-	speedKnob.Position = UDim2.new(0.22, 0, 0.5, 0)
+	speedKnob.Position = UDim2.new(0, 0, 0.5, 0)
 	speedKnob.AnchorPoint = Vector2.new(0.5, 0.5)
 	speedKnob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
 	speedKnob.BorderSizePixel = 0
@@ -1101,4 +1101,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Speed por CFrame + slider adicionados ao painel!")
+print("[Hitbox VOID] Speed CFrame agora inicia em 1 e vai ate 200!")
