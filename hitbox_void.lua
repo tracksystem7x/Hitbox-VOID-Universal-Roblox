@@ -32,8 +32,8 @@ local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
-local DISTANCIA_PUXAO_GRAB = 14
-local DURACAO_RETORNO_GRAB = 0.85
+local DISTANCIA_PUXAO_GRAB = 8
+local DURACAO_RETORNO_GRAB = 1.15
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local ANTI_RAGDOLL_PADRAO_ATIVO = false
@@ -94,7 +94,9 @@ local ultimoEspecialTick = 0
 local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
 local ultimaPosicaoSeguraQuadra = nil
+local posicaoAnteriorQuadra = nil
 local retornoGrabAte = 0
+local ultimoLogGrab = 0
 
 local function getGuiParent()
 	local ok, res = pcall(function()
@@ -356,6 +358,7 @@ end
 local function conectarMonitorMorte(char)
 	morteRegistradaNestaVida = false
 	ultimaPosicaoSeguraQuadra = nil
+	posicaoAnteriorQuadra = nil
 	retornoGrabAte = 0
 	if not char then return end
 
@@ -505,6 +508,16 @@ local function forcarRetornoQuadra(root, hum, destino)
 	end)
 end
 
+local function obterDestinoRetorno()
+	if posicaoAnteriorQuadra and ultimaPosicaoSeguraQuadra then
+		local distEntreSalvos = (ultimaPosicaoSeguraQuadra.Position - posicaoAnteriorQuadra.Position).Magnitude
+		if distEntreSalvos >= DISTANCIA_PUXAO_GRAB then
+			return posicaoAnteriorQuadra
+		end
+	end
+	return ultimaPosicaoSeguraQuadra or posicaoAnteriorQuadra
+end
+
 local function aplicarAntiGrab()
 	if not antiGrabAtivo then
 		retornoGrabAte = 0
@@ -516,9 +529,10 @@ local function aplicarAntiGrab()
 
 	local agora = os.clock()
 	local posAtual = root.CFrame
+	local destino = obterDestinoRetorno()
 
-	if agora < retornoGrabAte and ultimaPosicaoSeguraQuadra then
-		forcarRetornoQuadra(root, hum, ultimaPosicaoSeguraQuadra)
+	if agora < retornoGrabAte and destino then
+		forcarRetornoQuadra(root, hum, destino)
 		return
 	end
 
@@ -526,9 +540,14 @@ local function aplicarAntiGrab()
 		local saltoDist = (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude
 		local sinalGrab = temSinalDeGrabNoPersonagem(char, hum)
 
-		if saltoDist >= DISTANCIA_PUXAO_GRAB or (sinalGrab and haJogadorPerto(ultimaPosicaoSeguraQuadra.Position, 16)) then
+		if saltoDist >= DISTANCIA_PUXAO_GRAB or (sinalGrab and haJogadorPerto(ultimaPosicaoSeguraQuadra.Position, 20)) then
 			retornoGrabAte = agora + DURACAO_RETORNO_GRAB
-			forcarRetornoQuadra(root, hum, ultimaPosicaoSeguraQuadra)
+			destino = obterDestinoRetorno() or ultimaPosicaoSeguraQuadra
+			forcarRetornoQuadra(root, hum, destino)
+			if (agora - ultimoLogGrab) > 1 then
+				ultimoLogGrab = agora
+				print("[Hitbox VOID] Anti Grab disparou! Salto:", math.floor(saltoDist), "Sinal:", tostring(sinalGrab))
+			end
 			return
 		end
 	end
@@ -537,8 +556,11 @@ local function aplicarAntiGrab()
 	if not hum.Sit
 		and not hum.PlatformStand
 		and estado ~= Enum.HumanoidStateType.Physics
-		and root.AssemblyLinearVelocity.Magnitude < 55 then
-		ultimaPosicaoSeguraQuadra = posAtual
+		and root.AssemblyLinearVelocity.Magnitude < 45 then
+		if not ultimaPosicaoSeguraQuadra or (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude >= 2.5 then
+			posicaoAnteriorQuadra = ultimaPosicaoSeguraQuadra
+			ultimaPosicaoSeguraQuadra = posAtual
+		end
 	end
 end
 
@@ -1519,4 +1541,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Anti Grab reforçado na aba Combat!")
+print("[Hitbox VOID] Anti Grab ajustado na aba Combat!")
