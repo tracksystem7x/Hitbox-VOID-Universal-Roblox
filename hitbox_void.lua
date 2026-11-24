@@ -32,6 +32,7 @@ local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
+local ANTI_RAGDOLL_PADRAO_ATIVO = false
 local NO_ANIMATION_PADRAO_ATIVO = false
 local HUD_LOSANGO_PADRAO_VISIVEL = true
 local SPEED_CFRAME_PADRAO_ATIVO = false
@@ -50,7 +51,7 @@ local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
 local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
 local BOTAO_CINZA = Color3.fromRGB(42, 42, 50)
 local BOTAO_ROXO_ON = Color3.fromRGB(145, 50, 250)
-local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -356)
+local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -382)
 -- ==========================================
 
 if getgenv then
@@ -60,6 +61,7 @@ end
 
 local ativo = false
 local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
+local antiRagdollAtivo = ANTI_RAGDOLL_PADRAO_ATIVO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
 local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
@@ -350,6 +352,43 @@ local function getCharAndRoot(plr)
 	if hum and hum.Health <= 0 then return char, nil, hum end
 	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
 	return char, root, hum
+end
+
+-- ==========================================
+-- ANTI-RAGDOLL (ESTABILIZA HUMANOID E JUNTA ROOT)
+-- ==========================================
+local function aplicarAntiRagdoll()
+	if not antiRagdollAtivo then return end
+
+	local char, root, hum = getCharAndRoot(LocalPlayer)
+	if not char or not hum then return end
+
+	pcall(function()
+		if hum.PlatformStand then
+			hum.PlatformStand = false
+		end
+
+		local estado = hum:GetState()
+		if estado == Enum.HumanoidStateType.Physics
+			or estado == Enum.HumanoidStateType.FallingDown
+			or estado == Enum.HumanoidStateType.Ragdoll then
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+
+		for _, desc in ipairs(char:GetDescendants()) do
+			if desc:IsA("Motor6D") and not desc.Enabled then
+				desc.Enabled = true
+			elseif desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") then
+				if desc.Name:lower():find("ragdoll") then
+					desc.Enabled = false
+				end
+			end
+		end
+
+		if root then
+			root.RotVelocity = Vector3.zero
+		end
+	end)
 end
 
 -- ==========================================
@@ -687,7 +726,7 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 200, 0, 300)
+	frame.Size = UDim2.new(0, 200, 0, 326)
 	frame.Position = POSICAO_PAINEL_PADRAO
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
@@ -709,7 +748,6 @@ local function criarPainelHitbox()
 	titulo.TextXAlignment = Enum.TextXAlignment.Center
 	titulo.Parent = frame
 
-	-- Fileira de abas no topo do painel
 	local abasNomes = { "Combat", "Move", "Visual", "Config" }
 	local abasBotoes = {}
 	local abasPaginas = {}
@@ -775,21 +813,30 @@ local function criarPainelHitbox()
 	-- ABA 1: COMBAT
 	-- ==========================================
 	local pagCombat = abasPaginas.Combat
-	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 23), 11)
+	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 22), 11)
 	local btnLock = criarBotaoPadrao(
 		pagCombat,
 		targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF",
-		UDim2.new(0, 8, 0, 27),
-		UDim2.new(1, -16, 0, 23),
+		UDim2.new(0, 8, 0, 25),
+		UDim2.new(1, -16, 0, 22),
 		11
 	)
 	btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
 
+	local btnAntiRagdoll = criarBotaoPadrao(
+		pagCombat,
+		antiRagdollAtivo and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF",
+		UDim2.new(0, 8, 0, 50),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
 	local btnHit = criarBotaoPadrao(
 		pagCombat,
 		hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF",
-		UDim2.new(0, 8, 0, 54),
-		UDim2.new(0.5, -10, 0, 23),
+		UDim2.new(0, 8, 0, 75),
+		UDim2.new(0.5, -10, 0, 22),
 		10
 	)
 	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
@@ -797,19 +844,19 @@ local function criarPainelHitbox()
 	local btnVis = criarBotaoPadrao(
 		pagCombat,
 		hitboxVisivel and "Visivel: Sim" or "Visivel: Nao",
-		UDim2.new(0.5, 2, 0, 54),
-		UDim2.new(0.5, -10, 0, 23),
+		UDim2.new(0.5, 2, 0, 75),
+		UDim2.new(0.5, -10, 0, 22),
 		10
 	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 81, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 100, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
 		hitboxSize = novoSize
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 118), 22)
-	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 144), 22)
+	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 135), 21)
+	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 159), 21)
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
@@ -897,10 +944,10 @@ local function criarPainelHitbox()
 	)
 
 	local infoAtalhos = Instance.new("TextLabel")
-	infoAtalhos.Size = UDim2.new(1, -16, 0, 68)
+	infoAtalhos.Size = UDim2.new(1, -16, 0, 52)
 	infoAtalhos.Position = UDim2.new(0, 8, 0, 36)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "Gatilho: E\nEspecial: G\nEsconder/Mostrar Painel: J"
+	infoAtalhos.Text = "Gatilho: E\nEsconder/Mostrar Painel: J"
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
 	infoAtalhos.Font = Enum.Font.GothamMedium
 	infoAtalhos.TextSize = 11
@@ -908,7 +955,6 @@ local function criarPainelHitbox()
 	infoAtalhos.TextYAlignment = Enum.TextYAlignment.Top
 	infoAtalhos.Parent = pagConfig
 
-	-- Rodape fixo na parte inferior do painel
 	local rodape = Instance.new("TextLabel")
 	rodape.Name = "FooterCredits"
 	rodape.Size = UDim2.new(1, -16, 0, 14)
@@ -920,7 +966,6 @@ local function criarPainelHitbox()
 	rodape.TextSize = 9
 	rodape.Parent = frame
 
-	-- Arrastar painel e sliders
 	local arrastandoSlider = nil
 	local arrastandoPainel = false
 	local offsetPainel = Vector2.zero
@@ -969,7 +1014,6 @@ local function criarPainelHitbox()
 		end
 	end)
 
-	-- Eventos dos botoes
 	btnAuto.MouseButton1Click:Connect(function()
 		setEstado(not ativo)
 	end)
@@ -981,6 +1025,12 @@ local function criarPainelHitbox()
 		if not targetLockHabilitadoNoPainel then
 			alvoAtual = nil
 		end
+	end)
+
+	btnAntiRagdoll.MouseButton1Click:Connect(function()
+		antiRagdollAtivo = not antiRagdollAtivo
+		btnAntiRagdoll.Text = antiRagdollAtivo and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF"
+		btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
 	btnHit.MouseButton1Click:Connect(function()
@@ -1151,9 +1201,13 @@ pcall(function()
 	RunService:UnbindFromRenderStep("UniversalCharTargetLock")
 end)
 RunService.RenderStepped:Connect(aplicarFocoNoAlvo)
-RunService.Stepped:Connect(aplicarFocoNoAlvo)
+RunService.Stepped:Connect(function()
+	aplicarFocoNoAlvo()
+	aplicarAntiRagdoll()
+end)
 RunService.Heartbeat:Connect(function(dt)
 	aplicarFocoNoAlvo()
+	aplicarAntiRagdoll()
 	aplicarSpeedCFrame(dt)
 end)
 
@@ -1168,4 +1222,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Abas no topo (Combat, Move, Visual, Config) adicionadas!")
+print("[Hitbox VOID] Auto Block removido e Anti-Ragdoll adicionado na aba Combat!")
