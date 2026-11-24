@@ -31,8 +31,15 @@ local ORBITAR = false
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
+local WALKSPEED_BASE = 16
+local DISTANCIA_PUXAO_GRAB = 18
+
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local ANTI_RAGDOLL_PADRAO_ATIVO = false
+local ANTI_GRAB_RAG_PADRAO_ATIVO = false
+local DEATH_TP_PADRAO_ATIVO = false
+local NO_SLOW_PADRAO_ATIVO = false
+local ANTI_GRAB_PADRAO_ATIVO = false
 local NO_ANIMATION_PADRAO_ATIVO = false
 local HUD_LOSANGO_PADRAO_VISIVEL = true
 local SPEED_CFRAME_PADRAO_ATIVO = false
@@ -51,7 +58,7 @@ local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
 local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
 local BOTAO_CINZA = Color3.fromRGB(42, 42, 50)
 local BOTAO_ROXO_ON = Color3.fromRGB(145, 50, 250)
-local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -382)
+local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -486)
 -- ==========================================
 
 if getgenv then
@@ -62,6 +69,10 @@ end
 local ativo = false
 local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
 local antiRagdollAtivo = ANTI_RAGDOLL_PADRAO_ATIVO
+local antiGrabRagAtivo = ANTI_GRAB_RAG_PADRAO_ATIVO
+local deathTpAtivo = DEATH_TP_PADRAO_ATIVO
+local noSlowAtivo = NO_SLOW_PADRAO_ATIVO
+local antiGrabAtivo = ANTI_GRAB_PADRAO_ATIVO
 local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
 local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
@@ -79,6 +90,10 @@ local ultimoEstadoAplicado = {}
 local marcadoresJogadores = {}
 local animConexoes = {}
 local ultimoEspecialTick = 0
+local ultimaPosicaoMorte = nil
+local morteRegistradaNestaVida = false
+local ultimaPosicaoSeguraQuadra = nil
+local retornoGrabAte = 0
 
 local function getGuiParent()
 	local ok, res = pcall(function()
@@ -323,7 +338,68 @@ local function sincronizarNoAnimation()
 	end
 end
 
-LocalPlayer.CharacterAdded:Connect(function()
+-- ==========================================
+-- DEATH TP (SALVA POSICAO DA MORTE E VOLTA AO RENASCER)
+-- ==========================================
+local function registrarMorteSeNecessario(char)
+	if morteRegistradaNestaVida then return end
+	local targetChar = char or LocalPlayer.Character
+	if not targetChar then return end
+	local root = targetChar:FindFirstChild("HumanoidRootPart") or targetChar.PrimaryPart
+	if root then
+		ultimaPosicaoMorte = root.CFrame + Vector3.new(0, 3, 0)
+		morteRegistradaNestaVida = true
+	end
+end
+
+local function conectarMonitorMorte(char)
+	morteRegistradaNestaVida = false
+	ultimaPosicaoSeguraQuadra = nil
+	retornoGrabAte = 0
+	if not char then return end
+
+	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+	if hum then
+		hum.Died:Connect(function()
+			registrarMorteSeNecessario(char)
+		end)
+		hum:GetPropertyChangedSignal("Health"):Connect(function()
+			if hum.Health <= 0 then
+				registrarMorteSeNecessario(char)
+			end
+		end)
+	end
+end
+
+if LocalPlayer.Character then
+	conectarMonitorMorte(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(novoChar)
+	local destinoMorte = ultimaPosicaoMorte
+	conectarMonitorMorte(novoChar)
+
+	if deathTpAtivo and destinoMorte then
+		task.spawn(function()
+			local root = novoChar:FindFirstChild("HumanoidRootPart") or novoChar:WaitForChild("HumanoidRootPart", 5)
+			local hum = novoChar:FindFirstChildOfClass("Humanoid") or novoChar:WaitForChild("Humanoid", 5)
+			if root then
+				for _ = 1, 8 do
+					if not root or not root.Parent then break end
+					pcall(function()
+						if hum and hum.Sit then
+							hum.Sit = false
+						end
+						root.AssemblyLinearVelocity = Vector3.zero
+						root.AssemblyAngularVelocity = Vector3.zero
+						root.CFrame = destinoMorte
+					end)
+					task.wait(0.03)
+				end
+			end
+		end)
+	end
+
 	task.wait(0.2)
 	sincronizarNoAnimation()
 end)
@@ -355,7 +431,78 @@ local function getCharAndRoot(plr)
 end
 
 -- ==========================================
--- ANTI-RAGDOLL (ESTABILIZA HUMANOID E JUNTA ROOT)
+-- NO SLOW (EVITA REDUCAO DE WALKSPEED POR GOLPE/EFEITO)
+-- ==========================================
+local function aplicarNoSlow()
+	if not noSlowAtivo then return end
+
+	local char, _, hum = getCharAndRoot(LocalPlayer)
+	if not char or not hum then return end
+
+	pcall(function()
+		if hum.WalkSpeed < WALKSPEED_BASE then
+			hum.WalkSpeed = WALKSPEED_BASE
+		end
+	end)
+end
+
+-- ==========================================
+-- ANTI GRAB (RETORNA PARA A POSICAO DA QUADRA AO SER PUXADO/AGRADO)
+-- ==========================================
+local function aplicarAntiGrab()
+	if not antiGrabAtivo then
+		retornoGrabAte = 0
+		return
+	end
+
+	local char, root, hum = getCharAndRoot(LocalPlayer)
+	if not char or not root or not hum then return end
+
+	local agora = os.clock()
+	local posAtual = root.CFrame
+
+	-- Se ja estamos num ciclo de retorno de grab, puxa de volta para a posicao salva
+	if agora < retornoGrabAte and ultimaPosicaoSeguraQuadra then
+		pcall(function()
+			if hum.Sit then
+				hum.Sit = false
+			end
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			root.CFrame = ultimaPosicaoSeguraQuadra
+		end)
+		return
+	end
+
+	-- Detecta deslocamento brusco (grab / teleporte para outra sala) quando havia uma posicao segura anterior
+	if ultimaPosicaoSeguraQuadra then
+		local saltoDist = (posAtual.Position - ultimaPosicaoSeguraQuadra.Position).Magnitude
+		if saltoDist >= DISTANCIA_PUXAO_GRAB then
+			retornoGrabAte = agora + 0.35
+			pcall(function()
+				if hum.Sit then
+					hum.Sit = false
+				end
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+				root.CFrame = ultimaPosicaoSeguraQuadra
+			end)
+			return
+		end
+	end
+
+	-- Atualiza a ultima posicao valida na quadra apenas quando nao esta caindo livremente ou sentado
+	local estado = hum:GetState()
+	if not hum.Sit
+		and estado ~= Enum.HumanoidStateType.Freefall
+		and estado ~= Enum.HumanoidStateType.Physics
+		and root.AssemblyLinearVelocity.Magnitude < 65 then
+		ultimaPosicaoSeguraQuadra = posAtual
+	end
+end
+
+-- ==========================================
+-- ANTI-RAGDOLL E ANTI GRAB RAG
 -- ==========================================
 local function aplicarAntiRagdoll()
 	if not antiRagdollAtivo then return end
@@ -387,6 +534,49 @@ local function aplicarAntiRagdoll()
 
 		if root then
 			root.RotVelocity = Vector3.zero
+		end
+	end)
+end
+
+local function aplicarAntiGrabRag()
+	if not antiGrabRagAtivo then return end
+
+	local char, root, hum = getCharAndRoot(LocalPlayer)
+	if not char or not hum then return end
+
+	pcall(function()
+		if hum.PlatformStand then
+			hum.PlatformStand = false
+		end
+
+		local estado = hum:GetState()
+		if estado == Enum.HumanoidStateType.Physics
+			or estado == Enum.HumanoidStateType.FallingDown
+			or estado == Enum.HumanoidStateType.Ragdoll then
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+
+		for _, desc in ipairs(char:GetDescendants()) do
+			if desc:IsA("Motor6D") and not desc.Enabled then
+				desc.Enabled = true
+			elseif desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") or desc:IsA("WeldConstraint") then
+				local lowName = desc.Name:lower()
+				if lowName:find("ragdoll") or lowName:find("grab") or lowName:find("catch") or lowName:find("hold") then
+					desc.Enabled = false
+				end
+			elseif desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") then
+				local lowName = desc.Name:lower()
+				if lowName:find("grab") or lowName:find("ragdoll") or lowName:find("throw") or lowName:find("launch") then
+					desc:Destroy()
+				end
+			end
+		end
+
+		if root then
+			root.RotVelocity = Vector3.zero
+			if root.AssemblyLinearVelocity.Magnitude > 140 then
+				root.AssemblyLinearVelocity = Vector3.zero
+			end
 		end
 	end)
 end
@@ -726,7 +916,7 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 200, 0, 326)
+	frame.Size = UDim2.new(0, 200, 0, 430)
 	frame.Position = POSICAO_PAINEL_PADRAO
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
@@ -832,10 +1022,46 @@ local function criarPainelHitbox()
 	)
 	btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
+	local btnAntiGrabRag = criarBotaoPadrao(
+		pagCombat,
+		antiGrabRagAtivo and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF",
+		UDim2.new(0, 8, 0, 75),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnAntiGrabRag.BackgroundColor3 = antiGrabRagAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
+	local btnDeathTp = criarBotaoPadrao(
+		pagCombat,
+		deathTpAtivo and "Death TP: ON" or "Death TP: OFF",
+		UDim2.new(0, 8, 0, 100),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnDeathTp.BackgroundColor3 = deathTpAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
+	local btnNoSlow = criarBotaoPadrao(
+		pagCombat,
+		noSlowAtivo and "No Slow: ON" or "No Slow: OFF",
+		UDim2.new(0, 8, 0, 125),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
+	local btnAntiGrab = criarBotaoPadrao(
+		pagCombat,
+		antiGrabAtivo and "Anti Grab: ON" or "Anti Grab: OFF",
+		UDim2.new(0, 8, 0, 150),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnAntiGrab.BackgroundColor3 = antiGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
 	local btnHit = criarBotaoPadrao(
 		pagCombat,
 		hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF",
-		UDim2.new(0, 8, 0, 75),
+		UDim2.new(0, 8, 0, 175),
 		UDim2.new(0.5, -10, 0, 22),
 		10
 	)
@@ -844,19 +1070,19 @@ local function criarPainelHitbox()
 	local btnVis = criarBotaoPadrao(
 		pagCombat,
 		hitboxVisivel and "Visivel: Sim" or "Visivel: Nao",
-		UDim2.new(0.5, 2, 0, 75),
+		UDim2.new(0.5, 2, 0, 175),
 		UDim2.new(0.5, -10, 0, 22),
 		10
 	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 100, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 200, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
 		hitboxSize = novoSize
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 135), 21)
-	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 159), 21)
+	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 235), 21)
+	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 259), 21)
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
@@ -1033,6 +1259,30 @@ local function criarPainelHitbox()
 		btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
+	btnAntiGrabRag.MouseButton1Click:Connect(function()
+		antiGrabRagAtivo = not antiGrabRagAtivo
+		btnAntiGrabRag.Text = antiGrabRagAtivo and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF"
+		btnAntiGrabRag.BackgroundColor3 = antiGrabRagAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
+
+	btnDeathTp.MouseButton1Click:Connect(function()
+		deathTpAtivo = not deathTpAtivo
+		btnDeathTp.Text = deathTpAtivo and "Death TP: ON" or "Death TP: OFF"
+		btnDeathTp.BackgroundColor3 = deathTpAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
+
+	btnNoSlow.MouseButton1Click:Connect(function()
+		noSlowAtivo = not noSlowAtivo
+		btnNoSlow.Text = noSlowAtivo and "No Slow: ON" or "No Slow: OFF"
+		btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
+
+	btnAntiGrab.MouseButton1Click:Connect(function()
+		antiGrabAtivo = not antiGrabAtivo
+		btnAntiGrab.Text = antiGrabAtivo and "Anti Grab: ON" or "Anti Grab: OFF"
+		btnAntiGrab.BackgroundColor3 = antiGrabAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	end)
+
 	btnHit.MouseButton1Click:Connect(function()
 		hitboxAtivo = not hitboxAtivo
 		btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
@@ -1203,11 +1453,17 @@ end)
 RunService.RenderStepped:Connect(aplicarFocoNoAlvo)
 RunService.Stepped:Connect(function()
 	aplicarFocoNoAlvo()
+	aplicarNoSlow()
+	aplicarAntiGrab()
 	aplicarAntiRagdoll()
+	aplicarAntiGrabRag()
 end)
 RunService.Heartbeat:Connect(function(dt)
 	aplicarFocoNoAlvo()
+	aplicarNoSlow()
+	aplicarAntiGrab()
 	aplicarAntiRagdoll()
+	aplicarAntiGrabRag()
 	aplicarSpeedCFrame(dt)
 end)
 
@@ -1222,4 +1478,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[Hitbox VOID] Auto Block removido e Anti-Ragdoll adicionado na aba Combat!")
+print("[Hitbox VOID] Anti Grab adicionado na aba Combat!")
