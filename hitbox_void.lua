@@ -45,6 +45,7 @@ local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
+local JUMPPOWER_BASE = 50
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local BACK_COSTAS_PADRAO_ATIVO = false
@@ -61,9 +62,17 @@ local SPEED_CFRAME_PADRAO = 1
 local SPEED_CFRAME_MIN = 1
 local SPEED_CFRAME_MAX = 200
 
+local MODOS_SPEED = { "CFrame", "WalkSpeed", "AssemblyVel", "Hybrid (CF+WS)" }
+local SPEED_MODO_PADRAO_IDX = 1
+
+local JUMP_MULTI_PADRAO_ATIVO = false
+local JUMP_MULTI_PADRAO = 1
+local JUMP_MULTI_MIN = 1
+local JUMP_MULTI_MAX = 1000
+
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
-local HITBOX_MAX_SLIDER = 40
+local HITBOX_MAX_SLIDER = 27
 local HITBOX_VISIVEL_PADRAO = true
 local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
 local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
@@ -93,6 +102,11 @@ local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local hudStatsVisivel = HUD_STATS_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
 local speedCFrameValor = SPEED_CFRAME_PADRAO
+local speedModoIdx = SPEED_MODO_PADRAO_IDX
+local walkSpeedOriginalSalvo = nil
+local jumpMultiAtivo = JUMP_MULTI_PADRAO_ATIVO
+local jumpMultiValor = JUMP_MULTI_PADRAO
+local jumpPowerOriginalSalvo = nil
 local boostFpsRedeAtivo = false
 
 local alvoAtual = nil
@@ -105,6 +119,7 @@ local hitboxVisivel = HITBOX_VISIVEL_PADRAO
 local hitboxSize = HITBOX_TAMANHO_PADRAO
 local amgTexto = ""
 local focusTexto = ""
+local backFilterTexto = ""
 
 local originaisRoot = {}
 local ultimoEstadoAplicado = {}
@@ -121,11 +136,29 @@ local snapshotGraficoSalvo = nil
 
 local btnKillAuraUI
 local btnAutoClickUI
+local killAuraHudFrameUI
+local killAuraHudDotUI
+local killAuraHudLabelUI
+local killAuraHudStrokeUI
+
+local function obterModoSpeedAtual()
+	return MODOS_SPEED[speedModoIdx] or "CFrame"
+end
 
 local function atualizarKillAuraUI(ligado)
 	if btnKillAuraUI then
 		btnKillAuraUI.Text = ligado and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF"
 		btnKillAuraUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
+	end
+	if killAuraHudDotUI then
+		killAuraHudDotUI.BackgroundColor3 = ligado and Color3.fromRGB(35, 215, 100) or Color3.fromRGB(225, 50, 50)
+	end
+	if killAuraHudLabelUI then
+		killAuraHudLabelUI.Text = ligado and "KILL AURA: ON" or "KILL AURA: OFF"
+		killAuraHudLabelUI.TextColor3 = ligado and Color3.fromRGB(95, 245, 140) or Color3.fromRGB(245, 85, 85)
+	end
+	if killAuraHudStrokeUI then
+		killAuraHudStrokeUI.Color = ligado and Color3.fromRGB(70, 225, 120) or ROXO_NEXUS
 	end
 end
 
@@ -321,10 +354,54 @@ local function criarIndicadorUI()
 	statsLabel.Visible = hudStatsVisivel
 	statsLabel.Parent = holder
 
+	local kaBadge = Instance.new("Frame")
+	kaBadge.Name = "KillAuraIndicatorBadge"
+	kaBadge.Size = UDim2.new(0, 126, 0, 24)
+	kaBadge.Position = UDim2.new(0, 14, 0, 124)
+	kaBadge.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	kaBadge.BackgroundTransparency = 0.12
+	kaBadge.BorderSizePixel = 0
+	kaBadge.Parent = gui
+	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 5)
+
+	local kaStroke = Instance.new("UIStroke")
+	kaStroke.Color = ROXO_NEXUS
+	kaStroke.Thickness = 1.4
+	kaStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	kaStroke.Parent = kaBadge
+
+	local kaDot = Instance.new("Frame")
+	kaDot.Name = "KillAuraDot"
+	kaDot.Size = UDim2.new(0, 10, 0, 10)
+	kaDot.Position = UDim2.new(0, 11, 0.5, 0)
+	kaDot.AnchorPoint = Vector2.new(0.5, 0.5)
+	kaDot.BackgroundColor3 = Color3.fromRGB(225, 50, 50)
+	kaDot.BorderSizePixel = 0
+	kaDot.Parent = kaBadge
+	Instance.new("UICorner", kaDot).CornerRadius = UDim.new(1, 0)
+
+	local kaLabel = Instance.new("TextLabel")
+	kaLabel.Name = "KillAuraStatusText"
+	kaLabel.Size = UDim2.new(1, -24, 1, 0)
+	kaLabel.Position = UDim2.new(0, 22, 0, 0)
+	kaLabel.BackgroundTransparency = 1
+	kaLabel.Text = "KILL AURA: OFF"
+	kaLabel.TextColor3 = Color3.fromRGB(245, 85, 85)
+	kaLabel.TextStrokeTransparency = 0.15
+	kaLabel.Font = Enum.Font.GothamBlack
+	kaLabel.TextSize = 11
+	kaLabel.TextXAlignment = Enum.TextXAlignment.Left
+	kaLabel.Parent = kaBadge
+
 	losangoGuiRoot = gui
 	losangoUI = losango
 	statusUI = textoEstado
 	statsLabelUI = statsLabel
+	killAuraHudFrameUI = kaBadge
+	killAuraHudDotUI = kaDot
+	killAuraHudLabelUI = kaLabel
+	killAuraHudStrokeUI = kaStroke
+	atualizarKillAuraUI(killAuraAtivo)
 end
 
 criarIndicadorUI()
@@ -534,6 +611,8 @@ local function recuperarEstadoAposQueda(novoChar)
 	pulsoMiraAte = 0
 	yawAntesPulso = nil
 	yawAplicadoNoPulso = nil
+	walkSpeedOriginalSalvo = nil
+	jumpPowerOriginalSalvo = nil
 
 	atualizarVisual(ativo)
 	atualizarKillAuraUI(killAuraAtivo)
@@ -655,6 +734,33 @@ local function aplicarNoSlow()
 end
 
 -- ==========================================
+-- MULTIPLICADOR DE JUMP (JUMPPOWER ATE 1000)
+-- ==========================================
+local function aplicarJumpMultiplicador()
+	local char, _, hum = getCharAndRoot(LocalPlayer)
+	if not char or not hum then return end
+
+	pcall(function()
+		if jumpMultiAtivo then
+			if jumpPowerOriginalSalvo == nil then
+				local atualJp = hum.JumpPower
+				jumpPowerOriginalSalvo = (atualJp and atualJp > 0) and atualJp or JUMPPOWER_BASE
+			end
+			if not hum.UseJumpPower then
+				hum.UseJumpPower = true
+			end
+			local jpAlvo = jumpPowerOriginalSalvo * jumpMultiValor
+			if math.abs(hum.JumpPower - jpAlvo) > 0.05 then
+				hum.JumpPower = jpAlvo
+			end
+		elseif jumpPowerOriginalSalvo ~= nil then
+			hum.JumpPower = jumpPowerOriginalSalvo
+			jumpPowerOriginalSalvo = nil
+		end
+	end)
+end
+
+-- ==========================================
 -- ANTI-RAGDOLL E ANTI GRAB RAG
 -- ==========================================
 local function aplicarAntiRagdoll()
@@ -735,7 +841,7 @@ local function aplicarAntiGrabRag()
 end
 
 -- ==========================================
--- SPEED POR CFRAME (SEM ALTERAR WALKSPEED)
+-- SPEED MULTI-MODO + CFRAME SPEED BLINDADO
 -- ==========================================
 local function obterDirecaoMovimentoCFrame(hum)
 	local dir = hum and hum.MoveDirection or Vector3.zero
@@ -772,20 +878,91 @@ local function obterDirecaoMovimentoCFrame(hum)
 	return Vector3.zero
 end
 
-local function aplicarSpeedCFrame(dt)
-	if not speedCFrameAtivo then return end
+local function restaurarWalkSpeedSeNecessario()
+	if walkSpeedOriginalSalvo ~= nil then
+		local _, _, hum = getCharAndRoot(LocalPlayer)
+		if hum then
+			pcall(function()
+				hum.WalkSpeed = walkSpeedOriginalSalvo
+			end)
+		end
+		walkSpeedOriginalSalvo = nil
+	end
+end
+
+local function executarPassoCFrameBlindado(meuRoot, hum, dt)
+	local dir = obterDirecaoMovimentoCFrame(hum)
+	if dir.Magnitude <= 0.01 then return end
+
+	local delta = math.clamp(dt, 0.0005, 0.05)
+	local velocidadeUnidades = WALKSPEED_BASE * speedCFrameValor
+	local passo = dir * (velocidadeUnidades * delta)
+
+	pcall(function()
+		if hum and hum.Sit then
+			hum.Sit = false
+		end
+		meuRoot.AssemblyLinearVelocity = Vector3.new(0, meuRoot.AssemblyLinearVelocity.Y, 0)
+		meuRoot.AssemblyAngularVelocity = Vector3.zero
+		meuRoot.CFrame = meuRoot.CFrame + passo
+	end)
+end
+
+local function aplicarSpeedMultiModo(dt, permitirCFrame)
+	if not speedCFrameAtivo then
+		restaurarWalkSpeedSeNecessario()
+		return
+	end
 	if UserInputService:GetFocusedTextBox() then return end
 
 	local char, meuRoot, hum = getCharAndRoot(LocalPlayer)
 	if not char or not meuRoot or not hum then return end
-	if hum.Sit then return end
 
-	local dir = obterDirecaoMovimentoCFrame(hum)
-	if dir.Magnitude > 0.01 then
-		local passo = dir * (speedCFrameValor * math.clamp(dt, 0.001, 0.05))
+	local modo = obterModoSpeedAtual()
+
+	if modo == "CFrame" then
+		restaurarWalkSpeedSeNecessario()
+		if permitirCFrame then
+			executarPassoCFrameBlindado(meuRoot, hum, dt)
+		end
+	elseif modo == "WalkSpeed" then
 		pcall(function()
-			meuRoot.CFrame = meuRoot.CFrame + passo
+			if walkSpeedOriginalSalvo == nil then
+				local atualWs = hum.WalkSpeed
+				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
+			end
+			local wsAlvo = math.clamp(walkSpeedOriginalSalvo * speedCFrameValor, 1, 5000)
+			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
+				hum.WalkSpeed = wsAlvo
+			end
 		end)
+	elseif modo == "AssemblyVel" then
+		restaurarWalkSpeedSeNecessario()
+		if permitirCFrame then
+			local dir = obterDirecaoMovimentoCFrame(hum)
+			pcall(function()
+				if dir.Magnitude > 0.01 then
+					local velHorizontal = dir * (WALKSPEED_BASE * speedCFrameValor)
+					meuRoot.AssemblyLinearVelocity = Vector3.new(velHorizontal.X, meuRoot.AssemblyLinearVelocity.Y, velHorizontal.Z)
+				else
+					meuRoot.AssemblyLinearVelocity = Vector3.new(0, meuRoot.AssemblyLinearVelocity.Y, 0)
+				end
+			end)
+		end
+	elseif modo == "Hybrid (CF+WS)" then
+		pcall(function()
+			if walkSpeedOriginalSalvo == nil then
+				local atualWs = hum.WalkSpeed
+				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
+			end
+			local wsAlvo = math.clamp(walkSpeedOriginalSalvo * speedCFrameValor, 1, 5000)
+			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
+				hum.WalkSpeed = wsAlvo
+			end
+		end)
+		if permitirCFrame then
+			executarPassoCFrameBlindado(meuRoot, hum, dt)
+		end
 	end
 end
 
@@ -839,6 +1016,15 @@ local function jogadorElegivelComoAlvo(plr)
 	return true
 end
 
+local function elegivelParaBackCostas(plr)
+	if not jogadorElegivelComoAlvo(plr) then return false end
+	local listaBack = splitListaNomes(backFilterTexto)
+	if #listaBack == 0 then
+		return true
+	end
+	return combinaComLista(plr, listaBack)
+end
+
 local function normalizarAngulo(ang)
 	while ang > math.pi do
 		ang -= math.pi * 2
@@ -849,12 +1035,12 @@ local function normalizarAngulo(ang)
 	return ang
 end
 
-local function acharMaisProximoGeral(meuRoot, raioMax)
+local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 	local melhorRoot = nil
 	local menorDist = raioMax
 
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if jogadorElegivelComoAlvo(plr) then
+		if jogadorElegivelComoAlvo(plr) and (not filtroExtra or filtroExtra(plr)) then
 			local _, r = getCharAndRoot(plr)
 			if r then
 				local d = (r.Position - meuRoot.Position).Magnitude
@@ -925,7 +1111,7 @@ local function aplicarBackCostas()
 	if not char or not meuRoot then return end
 	if hum and hum.Sit then return end
 
-	local inimigoRoot = acharMaisProximoGeral(meuRoot, DISTANCIA_MAXIMA_COSTAS)
+	local inimigoRoot = acharMaisProximoGeral(meuRoot, DISTANCIA_MAXIMA_COSTAS, elegivelParaBackCostas)
 	if not inimigoRoot then return end
 
 	local lookInimigoPlano = Vector3.new(inimigoRoot.CFrame.LookVector.X, 0, inimigoRoot.CFrame.LookVector.Z)
@@ -1326,7 +1512,7 @@ local function criarPainelHitbox()
 
 	local frame = Instance.new("Frame")
 	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 200, 0, 456)
+	frame.Size = UDim2.new(0, 200, 0, 476)
 	frame.Position = POSICAO_PAINEL_PADRAO
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	frame.BorderSizePixel = 0
@@ -1497,8 +1683,9 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end)
 
-	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 242), 20)
-	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 265), 20)
+	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 242), 19)
+	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 263), 19)
+	local boxBackFilter = criarCampoTextoPadrao(pagCombat, "Back / Costas (quem usar)...", UDim2.new(0, 8, 0, 284), 19)
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
@@ -1512,25 +1699,107 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end)
 
+	boxBackFilter:GetPropertyChangedSignal("Text"):Connect(function()
+		backFilterTexto = boxBackFilter.Text
+	end)
+
 	local pagMove = abasPaginas.Move
 	local btnSpeed = criarBotaoPadrao(
 		pagMove,
-		speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF",
-		UDim2.new(0, 8, 0, 4),
-		UDim2.new(1, -16, 0, 25),
+		speedCFrameAtivo and "Speed: ON" or "Speed: OFF",
+		UDim2.new(0, 8, 0, 2),
+		UDim2.new(1, -16, 0, 22),
 		11
 	)
 	btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSpeed = criarSliderPadrao(pagMove, "Speed: ", 38, SPEED_CFRAME_MIN, SPEED_CFRAME_MAX, speedCFrameValor, function(novoSpeed)
+	local filtroSpeedBox = Instance.new("Frame")
+	filtroSpeedBox.Name = "SpeedModeFilterBox"
+	filtroSpeedBox.Size = UDim2.new(1, -16, 0, 24)
+	filtroSpeedBox.Position = UDim2.new(0, 8, 0, 27)
+	filtroSpeedBox.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+	filtroSpeedBox.BorderSizePixel = 0
+	filtroSpeedBox.Parent = pagMove
+	Instance.new("UICorner", filtroSpeedBox).CornerRadius = UDim.new(0, 5)
+	local filtroSpeedStroke = aplicarBordaRoxa(filtroSpeedBox, 1.3)
+
+	local btnModoPrev = Instance.new("TextButton")
+	btnModoPrev.Size = UDim2.new(0, 22, 1, -4)
+	btnModoPrev.Position = UDim2.new(0, 2, 0, 2)
+	btnModoPrev.BackgroundColor3 = BOTAO_CINZA
+	btnModoPrev.Text = "<"
+	btnModoPrev.TextColor3 = Color3.fromRGB(240, 240, 250)
+	btnModoPrev.Font = Enum.Font.GothamBlack
+	btnModoPrev.TextSize = 11
+	btnModoPrev.BorderSizePixel = 0
+	btnModoPrev.Parent = filtroSpeedBox
+	Instance.new("UICorner", btnModoPrev).CornerRadius = UDim.new(0, 4)
+
+	local lblModoSpeed = Instance.new("TextLabel")
+	lblModoSpeed.Size = UDim2.new(1, -48, 1, 0)
+	lblModoSpeed.Position = UDim2.new(0, 24, 0, 0)
+	lblModoSpeed.BackgroundTransparency = 1
+	lblModoSpeed.Text = "Modo: " .. obterModoSpeedAtual()
+	lblModoSpeed.TextColor3 = Color3.fromRGB(220, 185, 255)
+	lblModoSpeed.Font = Enum.Font.GothamBold
+	lblModoSpeed.TextSize = 10
+	lblModoSpeed.Parent = filtroSpeedBox
+
+	local btnModoNext = Instance.new("TextButton")
+	btnModoNext.Size = UDim2.new(0, 22, 1, -4)
+	btnModoNext.Position = UDim2.new(1, -24, 0, 2)
+	btnModoNext.BackgroundColor3 = BOTAO_CINZA
+	btnModoNext.Text = ">"
+	btnModoNext.TextColor3 = Color3.fromRGB(240, 240, 250)
+	btnModoNext.Font = Enum.Font.GothamBlack
+	btnModoNext.TextSize = 11
+	btnModoNext.BorderSizePixel = 0
+	btnModoNext.Parent = filtroSpeedBox
+	Instance.new("UICorner", btnModoNext).CornerRadius = UDim.new(0, 4)
+
+	local function atualizarSeletorModoSpeed()
+		lblModoSpeed.Text = "Modo: " .. obterModoSpeedAtual()
+		filtroSpeedStroke.Color = speedCFrameAtivo and Color3.fromRGB(185, 115, 255) or ROXO_NEXUS
+		restaurarWalkSpeedSeNecessario()
+	end
+
+	local function ciclarModoSpeed(delta)
+		local total = #MODOS_SPEED
+		speedModoIdx = ((speedModoIdx - 1 + delta) % total) + 1
+		atualizarSeletorModoSpeed()
+	end
+
+	btnModoPrev.MouseButton1Click:Connect(function()
+		ciclarModoSpeed(-1)
+	end)
+
+	btnModoNext.MouseButton1Click:Connect(function()
+		ciclarModoSpeed(1)
+	end)
+
+	local sliderSpeed = criarSliderPadrao(pagMove, "Speed: ", 54, SPEED_CFRAME_MIN, SPEED_CFRAME_MAX, speedCFrameValor, function(novoSpeed)
 		speedCFrameValor = novoSpeed
 	end)
 
+	local btnJumpMulti = criarBotaoPadrao(
+		pagMove,
+		jumpMultiAtivo and "Jump (Multi): ON" or "Jump (Multi): OFF",
+		UDim2.new(0, 8, 0, 94),
+		UDim2.new(1, -16, 0, 22),
+		11
+	)
+	btnJumpMulti.BackgroundColor3 = jumpMultiAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
+	local sliderJump = criarSliderPadrao(pagMove, "Jump: ", 122, JUMP_MULTI_MIN, JUMP_MULTI_MAX, jumpMultiValor, function(novoJump)
+		jumpMultiValor = novoJump
+		aplicarJumpMultiplicador()
+	end)
+
 	local dicaMove = Instance.new("TextLabel")
-	dicaMove.Size = UDim2.new(1, -16, 0, 36)
-	dicaMove.Position = UDim2.new(0, 8, 0, 76)
+	dicaMove.Size = UDim2.new(1, -16, 0, 46)
+	dicaMove.Position = UDim2.new(0, 8, 0, 160)
 	dicaMove.BackgroundTransparency = 1
-	dicaMove.Text = "Deslocamento horizontal por CFrame sem alterar WalkSpeed."
+	dicaMove.Text = "Modos: CFrame (blindado), WalkSpeed, AssemblyVel ou Hybrid. Jump ate 1000x."
 	dicaMove.TextColor3 = Color3.fromRGB(165, 165, 180)
 	dicaMove.TextWrapped = true
 	dicaMove.Font = Enum.Font.Gotham
@@ -1636,6 +1905,12 @@ local function criarPainelHitbox()
 		sliderSpeed.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
 	end)
 
+	sliderJump.track.MouseButton1Down:Connect(function()
+		arrastandoSlider = sliderJump
+		arrastandoPainel = false
+		sliderJump.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
+	end)
+
 	frame.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSlider then
 			arrastandoPainel = true
@@ -1731,8 +2006,16 @@ local function criarPainelHitbox()
 
 	btnSpeed.MouseButton1Click:Connect(function()
 		speedCFrameAtivo = not speedCFrameAtivo
-		btnSpeed.Text = speedCFrameAtivo and "Speed (CFrame): ON" or "Speed (CFrame): OFF"
+		btnSpeed.Text = speedCFrameAtivo and "Speed: ON" or "Speed: OFF"
 		btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		atualizarSeletorModoSpeed()
+	end)
+
+	btnJumpMulti.MouseButton1Click:Connect(function()
+		jumpMultiAtivo = not jumpMultiAtivo
+		btnJumpMulti.Text = jumpMultiAtivo and "Jump (Multi): ON" or "Jump (Multi): OFF"
+		btnJumpMulti.BackgroundColor3 = jumpMultiAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+		aplicarJumpMultiplicador()
 	end)
 
 	btnNoAnim.MouseButton1Click:Connect(function()
@@ -1774,6 +2057,7 @@ local function criarPainelHitbox()
 	painelFrameUI = frame
 	btnAutoClickUI = btnAuto
 	btnKillAuraUI = btnKillAura
+	atualizarKillAuraUI(killAuraAtivo)
 end
 
 criarPainelHitbox()
@@ -1883,9 +2167,10 @@ RunService.Heartbeat:Connect(function(dt)
 	local agora = os.clock()
 	aplicarBackCostas()
 	aplicarNoSlow()
+	aplicarJumpMultiplicador()
 	aplicarAntiRagdoll()
 	aplicarAntiGrabRag()
-	aplicarSpeedCFrame(dt)
+	aplicarSpeedMultiModo(dt, true)
 
 	local killAuraAtacou = processarKillAuraFrame(agora)
 	processarAutoClickFrame(agora, killAuraAtacou)
