@@ -26,24 +26,24 @@ local TECLA_PAINEL = Enum.KeyCode.J
 local TECLA_ESPECIAL = Enum.KeyCode.G
 local JANELA_ESPECIAL_SEG = 1.2
 
-local DISTANCIA_MAXIMA = 27
-local ALCANCE_MAXIMO_REAL_JOGO = 27
-local MARGEM_PERSISTENCIA_TRAVA = 8
+local DISTANCIA_MAXIMA = 25
+local MARGEM_TROCA = 4.0
 local FIRMEZA_GIRO = 1.0
 local ORBITAR = false
 
 local DISTANCIA_COSTAS = 3.2
 local DISTANCIA_MAXIMA_COSTAS = 45
 
-local DISTANCIA_KILL_AURA = 27
+local DISTANCIA_KILL_AURA = 28
+local MARGEM_PERSISTENCIA_KILL_AURA = 5
 local DELAY_KILL_AURA = 0.001
-local RAJADA_KILL_AURA = 2
+local RAJADA_KILL_AURA = 3
 local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
 
 local ATIVAR_AUTOCLICK_JUNTO = true
 local DELAY_CLIQUE = 0.001
-local RAJADA_AUTOCLICK = 2
+local RAJADA_AUTOCLICK = 3
 
 local WALKSPEED_BASE = 16
 local JUMPPOWER_BASE = 50
@@ -71,12 +71,11 @@ local JUMP_MULT_MIN = 1
 local JUMP_MULT_MAX = 5
 
 local HITBOX_PADRAO_ATIVO = false
-local HITBOX_TAMANHO_PADRAO = 27
-local HITBOX_MIN_SLIDER = 3
-local HITBOX_MAX_SLIDER = 27
+local HITBOX_TAMANHO_PADRAO = 12
+local HITBOX_MAX_SLIDER = 40
 local HITBOX_VISIVEL_PADRAO = true
-local HITBOX_TRANSPARENCIA_VISIVEL = 0.975
-local COR_HITBOX_AURA = Color3.fromRGB(165, 55, 75)
+local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
+local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
 
 -- Tema Roxo Nexus
 local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
@@ -111,24 +110,20 @@ local jumpMultValor = JUMP_MULT_PADRAO
 
 local boostFpsRedeAtivo = false
 
--- Trava unificada do alvo atual em combate (nao troca quando outro player entra no raio)
-local alvoTravadoPlayer = nil
+local alvoAtual = nil
+local alvoKillAuraPlayer = nil
 local ultimoDisparoKillAuraTick = 0
 local ultimoDisparoAutoClickTick = 0
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
 local hitboxVisivel = HITBOX_VISIVEL_PADRAO
-local hitboxSize = math.clamp(HITBOX_TAMANHO_PADRAO, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
-
+local hitboxSize = HITBOX_TAMANHO_PADRAO
 local amgTexto = ""
 local focusTexto = ""
 local backFilterTexto = ""
 
-local cacheAMG = {}
-local cacheFocus = {}
-local cacheBack = {}
-
-local caixasHitboxVisual = {}
+local originaisRoot = {}
+local ultimoEstadoAplicado = {}
 local marcadoresJogadores = {}
 local animConexoes = {}
 local ultimoEspecialTick = 0
@@ -143,29 +138,6 @@ local snapshotGraficoSalvo = nil
 local btnKillAuraUI
 local btnAutoClickUI
 local kaBadgeUI
-local kaStrokeUI
-
-local function compilarListaNomes(texto)
-	local lista = {}
-	if not texto or texto:match("^%s*$") then
-		return lista
-	end
-	for token in texto:gmatch("[^%s,;|]+") do
-		local limpo = token:match("^%s*(.-)%s*$"):lower()
-		if limpo ~= "" then
-			table.insert(lista, limpo)
-		end
-	end
-	return lista
-end
-
-local function atualizarCacheFiltros()
-	cacheAMG = compilarListaNomes(amgTexto)
-	cacheFocus = compilarListaNomes(focusTexto)
-	cacheBack = compilarListaNomes(backFilterTexto)
-end
-
-atualizarCacheFiltros()
 
 local function atualizarKillAuraUI(ligado)
 	if btnKillAuraUI then
@@ -173,12 +145,8 @@ local function atualizarKillAuraUI(ligado)
 		btnKillAuraUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
 	end
 	if kaBadgeUI then
-		kaBadgeUI.Text = ligado and "KILL AURA: ON" or "KILL AURA: OFF"
-		kaBadgeUI.TextColor3 = ligado and Color3.fromRGB(130, 255, 175) or Color3.fromRGB(255, 130, 130)
-		kaBadgeUI.BackgroundColor3 = ligado and Color3.fromRGB(11, 46, 24) or Color3.fromRGB(56, 13, 18)
-	end
-	if kaStrokeUI then
-		kaStrokeUI.Color = ligado and Color3.fromRGB(110, 255, 160) or Color3.fromRGB(255, 105, 105)
+		kaBadgeUI.Text = ligado and "KA: ON" or "KA: OFF"
+		kaBadgeUI.TextColor3 = ligado and Color3.fromRGB(185, 115, 255) or Color3.fromRGB(185, 185, 200)
 	end
 end
 
@@ -189,10 +157,8 @@ local function setKillAuraEstado(novoEstado)
 	end
 	ultimoToggleKillAura = agora
 	killAuraAtivo = novoEstado
-	if not killAuraAtivo and not ativo then
-		alvoTravadoPlayer = nil
-	end
 	if not killAuraAtivo then
+		alvoKillAuraPlayer = nil
 		pulsoMiraAte = 0
 		yawAntesPulso = nil
 		yawAplicadoNoPulso = nil
@@ -327,7 +293,7 @@ local function criarIndicadorUI()
 
 	local holder = Instance.new("Frame")
 	holder.Name = "DiamondHolder"
-	holder.Size = UDim2.new(0, 232, 0, 68)
+	holder.Size = UDim2.new(0, 148, 0, 56)
 	holder.Position = UDim2.new(0, 14, 0, 66)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui
@@ -335,7 +301,7 @@ local function criarIndicadorUI()
 	local losango = Instance.new("Frame")
 	losango.Name = "DiamondShape"
 	losango.Size = UDim2.new(0, 22, 0, 22)
-	losango.Position = UDim2.new(0, 17, 0, 19)
+	losango.Position = UDim2.new(0, 17, 0, 17)
 	losango.AnchorPoint = Vector2.new(0.5, 0.5)
 	losango.Rotation = 45
 	losango.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
@@ -350,42 +316,41 @@ local function criarIndicadorUI()
 
 	local textoEstado = Instance.new("TextLabel")
 	textoEstado.Name = "StatusLabel"
-	textoEstado.Size = UDim2.new(0, 38, 0, 24)
-	textoEstado.Position = UDim2.new(0, 35, 0, 19)
+	textoEstado.Size = UDim2.new(0, 44, 0, 22)
+	textoEstado.Position = UDim2.new(0, 36, 0, 17)
 	textoEstado.AnchorPoint = Vector2.new(0, 0.5)
 	textoEstado.BackgroundTransparency = 1
 	textoEstado.Text = "OFF"
 	textoEstado.TextColor3 = Color3.fromRGB(235, 65, 65)
-	textoEstado.TextStrokeTransparency = 0.1
-	textoEstado.Font = Enum.Font.GothamBlack
+	textoEstado.TextStrokeTransparency = 0.2
+	textoEstado.Font = Enum.Font.GothamBold
 	textoEstado.TextSize = 13
 	textoEstado.TextXAlignment = Enum.TextXAlignment.Left
 	textoEstado.Parent = holder
 
 	local kaBadge = Instance.new("TextLabel")
 	kaBadge.Name = "KillAuraBadge"
-	kaBadge.Size = UDim2.new(0, 142, 0, 30)
-	kaBadge.Position = UDim2.new(0, 74, 0, 19)
+	kaBadge.Size = UDim2.new(0, 64, 0, 20)
+	kaBadge.Position = UDim2.new(0, 78, 0, 17)
 	kaBadge.AnchorPoint = Vector2.new(0, 0.5)
-	kaBadge.BackgroundColor3 = Color3.fromRGB(56, 13, 18)
-	kaBadge.BackgroundTransparency = 0
-	kaBadge.Text = "KILL AURA: OFF"
-	kaBadge.TextColor3 = Color3.fromRGB(255, 130, 130)
-	kaBadge.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	kaBadge.TextStrokeTransparency = 0
-	kaBadge.Font = Enum.Font.FredokaOne
-	kaBadge.TextSize = 15
+	kaBadge.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+	kaBadge.BackgroundTransparency = 0.2
+	kaBadge.Text = "KA: OFF"
+	kaBadge.TextColor3 = Color3.fromRGB(185, 185, 200)
+	kaBadge.TextStrokeTransparency = 0.25
+	kaBadge.Font = Enum.Font.GothamBold
+	kaBadge.TextSize = 10
 	kaBadge.Parent = holder
-	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 4)
 	local kaStroke = Instance.new("UIStroke")
-	kaStroke.Color = Color3.fromRGB(255, 105, 105)
-	kaStroke.Thickness = 2
+	kaStroke.Color = ROXO_NEXUS
+	kaStroke.Thickness = 1
 	kaStroke.Parent = kaBadge
 
 	local statsLabel = Instance.new("TextLabel")
 	statsLabel.Name = "FpsPingLabel"
 	statsLabel.Size = UDim2.new(1, 0, 0, 18)
-	statsLabel.Position = UDim2.new(0, 4, 0, 40)
+	statsLabel.Position = UDim2.new(0, 4, 0, 34)
 	statsLabel.BackgroundTransparency = 1
 	statsLabel.Text = "FPS: -- | -- MS"
 	statsLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
@@ -400,7 +365,6 @@ local function criarIndicadorUI()
 	losangoUI = losango
 	statusUI = textoEstado
 	kaBadgeUI = kaBadge
-	kaStrokeUI = kaStroke
 	statsLabelUI = statsLabel
 	atualizarKillAuraUI(killAuraAtivo)
 end
@@ -423,8 +387,8 @@ end
 
 local function setEstado(novoEstado)
 	ativo = novoEstado
-	if not ativo and not killAuraAtivo then
-		alvoTravadoPlayer = nil
+	if not ativo then
+		alvoAtual = nil
 	end
 	if getgenv then
 		getgenv().UniversalTargetLockActive = ativo
@@ -574,7 +538,7 @@ local function sincronizarNoAnimation()
 
 	local animate = char:FindFirstChild("Animate")
 	if animate and animate:IsA("LocalScript") and animate.Disabled then
-		animate.Disabled = false
+		pcall(function() animate.Disabled = false end)
 	end
 
 	limparConexoesAnim()
@@ -633,7 +597,8 @@ local function conectarMonitorMorte(char)
 end
 
 local function recuperarEstadoAposQueda(novoChar)
-	alvoTravadoPlayer = nil
+	alvoAtual = nil
+	alvoKillAuraPlayer = nil
 	pulsoMiraAte = 0
 	yawAntesPulso = nil
 	yawAplicadoNoPulso = nil
@@ -709,7 +674,7 @@ task.spawn(function()
 			if char then
 				local animate = char:FindFirstChild("Animate")
 				if animate and animate:IsA("LocalScript") and animate.Disabled then
-					animate.Disabled = false
+					pcall(function() animate.Disabled = false end)
 				end
 				local hum = char:FindFirstChildOfClass("Humanoid")
 				checarTracksHumanoid(hum)
@@ -720,6 +685,7 @@ task.spawn(function()
 	end
 end)
 
+-- Retorna valido APENAS se o jogador estiver vivo (Health > 0) e com HumanoidRootPart
 local function getCharAndRoot(plr)
 	local char = plr and plr.Character
 	if not char or not char.Parent then return nil, nil, nil end
@@ -734,40 +700,72 @@ local function getCharAndRoot(plr)
 	return char, root, hum
 end
 
-local function aplicarNoSlow()
-	if not noSlowAtivo or speedAtivo then return end
-	local char, _, hum = getCharAndRoot(LocalPlayer)
-	if not char or not hum then return end
-	if hum.WalkSpeed < WALKSPEED_BASE then
-		hum.WalkSpeed = WALKSPEED_BASE
+local function jogadorEstaCaidoKnockdown(hum)
+	if not hum or hum.Health <= 0 then return false end
+	if hum.PlatformStand then return true end
+	local ok, st = pcall(function() return hum:GetState() end)
+	if ok and (st == Enum.HumanoidStateType.Ragdoll
+		or st == Enum.HumanoidStateType.FallingDown
+		or st == Enum.HumanoidStateType.Physics) then
+		return true
 	end
+	return false
 end
 
+-- ==========================================
+-- NO SLOW (EVITA REDUCAO DE WALKSPEED POR GOLPE/EFEITO)
+-- ==========================================
+local function aplicarNoSlow()
+	if not noSlowAtivo or speedAtivo then return end
+
+	local char, _, hum = getCharAndRoot(LocalPlayer)
+	if not char or not hum then return end
+
+	pcall(function()
+		if hum.WalkSpeed < WALKSPEED_BASE then
+			hum.WalkSpeed = WALKSPEED_BASE
+		end
+	end)
+end
+
+-- ==========================================
+-- MULTIPLICADOR DE JUMP (JUMPPOWER)
+-- ==========================================
 local function aplicarJumpMultiplier()
 	local char, _, hum = getCharAndRoot(LocalPlayer)
 	if not char or not hum then return end
-	hum.UseJumpPower = true
-	if jumpMultAtivo then
-		hum.JumpPower = JUMPPOWER_BASE * jumpMultValor
-	elseif hum.JumpPower ~= JUMPPOWER_BASE then
-		hum.JumpPower = JUMPPOWER_BASE
-	end
+
+	pcall(function()
+		hum.UseJumpPower = true
+		if jumpMultAtivo then
+			hum.JumpPower = JUMPPOWER_BASE * jumpMultValor
+		elseif hum.JumpPower ~= JUMPPOWER_BASE then
+			hum.JumpPower = JUMPPOWER_BASE
+		end
+	end)
 end
 
+-- ==========================================
+-- ANTI-RAGDOLL E ANTI GRAB RAG
+-- ==========================================
 local function aplicarAntiRagdoll()
 	if not antiRagdollAtivo then return end
+
 	local char, root, hum = getCharAndRoot(LocalPlayer)
 	if not char or not hum then return end
+
 	pcall(function()
 		if hum.PlatformStand then
 			hum.PlatformStand = false
 		end
+
 		local estado = hum:GetState()
 		if estado == Enum.HumanoidStateType.Physics
 			or estado == Enum.HumanoidStateType.FallingDown
 			or estado == Enum.HumanoidStateType.Ragdoll then
 			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 		end
+
 		for _, desc in ipairs(char:GetDescendants()) do
 			if desc:IsA("Motor6D") and not desc.Enabled then
 				desc.Enabled = true
@@ -777,6 +775,7 @@ local function aplicarAntiRagdoll()
 				end
 			end
 		end
+
 		if root then
 			root.RotVelocity = Vector3.zero
 		end
@@ -785,18 +784,22 @@ end
 
 local function aplicarAntiGrabRag()
 	if not antiGrabRagAtivo then return end
+
 	local char, root, hum = getCharAndRoot(LocalPlayer)
 	if not char or not hum then return end
+
 	pcall(function()
 		if hum.PlatformStand then
 			hum.PlatformStand = false
 		end
+
 		local estado = hum:GetState()
 		if estado == Enum.HumanoidStateType.Physics
 			or estado == Enum.HumanoidStateType.FallingDown
 			or estado == Enum.HumanoidStateType.Ragdoll then
 			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 		end
+
 		for _, desc in ipairs(char:GetDescendants()) do
 			if desc:IsA("Motor6D") and not desc.Enabled then
 				desc.Enabled = true
@@ -812,6 +815,7 @@ local function aplicarAntiGrabRag()
 				end
 			end
 		end
+
 		if root then
 			root.RotVelocity = Vector3.zero
 			if root.AssemblyLinearVelocity.Magnitude > 140 then
@@ -821,18 +825,24 @@ local function aplicarAntiGrabRag()
 	end)
 end
 
+-- ==========================================
+-- SPEED MULTI-MODO (CFRAME / WALKSPEED / PASSO)
+-- ==========================================
 local function obterDirecaoMovimento(hum)
 	local dir = hum and hum.MoveDirection or Vector3.zero
 	local plano = Vector3.new(dir.X, 0, dir.Z)
 	if plano.Magnitude > 0.01 then
 		return plano.Unit
 	end
+
 	local cam = workspace.CurrentCamera
 	if not cam then return Vector3.zero end
+
 	local forward = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
 	local right = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
 	if forward.Magnitude > 0.001 then forward = forward.Unit end
 	if right.Magnitude > 0.001 then right = right.Unit end
+
 	local move = Vector3.zero
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
 		move += forward
@@ -846,6 +856,7 @@ local function obterDirecaoMovimento(hum)
 	if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
 		move -= right
 	end
+
 	if move.Magnitude > 0.01 then
 		return move.Unit
 	end
@@ -859,28 +870,53 @@ end
 local function aplicarSpeed(dt)
 	local char, meuRoot, hum = getCharAndRoot(LocalPlayer)
 	if not char or not meuRoot or not hum then return end
+
 	if not speedAtivo then
 		if getModoSpeedAtual() == "WalkSpeed" and hum.WalkSpeed > WALKSPEED_BASE and not noSlowAtivo then
-			hum.WalkSpeed = WALKSPEED_BASE
+			pcall(function() hum.WalkSpeed = WALKSPEED_BASE end)
 		end
 		return
 	end
-	if UserInputService:GetFocusedTextBox() or hum.Sit then return end
+
+	if UserInputService:GetFocusedTextBox() then return end
+	if hum.Sit then return end
+
 	local modo = getModoSpeedAtual()
 	local dir = obterDirecaoMovimento(hum)
-	local dtClamped = math.clamp(dt, 0.001, 0.05)
+
 	if modo == "WalkSpeed" then
-		hum.WalkSpeed = speedValor
+		pcall(function()
+			hum.WalkSpeed = speedValor
+		end)
 	elseif modo == "CFrame" then
 		if dir.Magnitude > 0.01 then
-			meuRoot.CFrame = meuRoot.CFrame + (dir * (speedValor * dtClamped))
+			local passo = dir * (speedValor * math.clamp(dt, 0.001, 0.05))
+			pcall(function()
+				meuRoot.CFrame = meuRoot.CFrame + passo
+			end)
 		end
 	elseif modo == "Passo" then
 		if dir.Magnitude > 0.01 then
-			local delta = dir * (speedValor * 0.45 * dtClamped)
-			meuRoot.AssemblyLinearVelocity = Vector3.new(delta.X * 55, meuRoot.AssemblyLinearVelocity.Y, delta.Z * 55)
+			local delta = dir * (speedValor * 0.45 * math.clamp(dt, 0.001, 0.05))
+			pcall(function()
+				meuRoot.AssemblyLinearVelocity = Vector3.new(delta.X * 55, meuRoot.AssemblyLinearVelocity.Y, delta.Z * 55)
+			end)
 		end
 	end
+end
+
+local function splitListaNomes(texto)
+	local lista = {}
+	if not texto or texto:match("^%s*$") then
+		return lista
+	end
+	for token in texto:gmatch("[^%s,;|]+") do
+		local limpo = token:match("^%s*(.-)%s*$"):lower()
+		if limpo ~= "" then
+			table.insert(lista, limpo)
+		end
+	end
+	return lista
 end
 
 local function combinaComLista(plr, lista)
@@ -897,31 +933,34 @@ local function combinaComLista(plr, lista)
 end
 
 local function ehAmigoAMG(plr)
-	return combinaComLista(plr, cacheAMG)
+	return combinaComLista(plr, splitListaNomes(amgTexto))
 end
 
 local function ehAlvoFocus(plr)
-	if #cacheFocus == 0 then
+	local listaFocus = splitListaNomes(focusTexto)
+	if #listaFocus == 0 then
 		return true
 	end
-	return combinaComLista(plr, cacheFocus)
+	return combinaComLista(plr, listaFocus)
 end
 
 local function temFiltroFocusAtivo()
-	return #cacheFocus > 0
+	return #splitListaNomes(focusTexto) > 0
 end
 
 local function elegivelBackCostas(plr)
 	if not plr or plr == LocalPlayer then return false end
 	if ehAmigoAMG(plr) then return false end
-	if #cacheBack > 0 then
-		return combinaComLista(plr, cacheBack)
+	local listaBack = splitListaNomes(backFilterTexto)
+	if #listaBack > 0 then
+		return combinaComLista(plr, listaBack)
 	end
 	return ehAlvoFocus(plr)
 end
 
+-- Exige jogador VIVO (Health > 0) e fora da lista AMG; respeita Focus quando preenchido
 local function jogadorElegivelComoAlvo(plr)
-	if not plr or plr == LocalPlayer or plr.Parent ~= Players then return false end
+	if not plr or plr == LocalPlayer then return false end
 	if ehAmigoAMG(plr) then return false end
 	if not ehAlvoFocus(plr) then return false end
 	local _, root, hum = getCharAndRoot(plr)
@@ -941,56 +980,6 @@ local function normalizarAngulo(ang)
 	return ang
 end
 
--- Distancia real completa (360 graus: frente, costas e lados, sem encurtar alcance)
-local function distanciaEfetivaAlvo(meuPos, rootAlvo)
-	local distCentro = (rootAlvo.Position - meuPos).Magnitude
-	return math.max(0.1, distCentro)
-end
-
-local function obterAlcanceEfetivoMaximo()
-	local raioHitboxUtil = hitboxAtivo and math.min(hitboxSize, ALCANCE_MAXIMO_REAL_JOGO) or DISTANCIA_MAXIMA
-	return math.min(math.max(DISTANCIA_MAXIMA, raioHitboxUtil), ALCANCE_MAXIMO_REAL_JOGO)
-end
-
-local function obterOuManterAlvoTravado(meuRoot, raioBase, raioPersistencia)
-	if not meuRoot then
-		alvoTravadoPlayer = nil
-		return nil, nil
-	end
-
-	if alvoTravadoPlayer and jogadorElegivelComoAlvo(alvoTravadoPlayer) then
-		local _, rootTravado, humTravado = getCharAndRoot(alvoTravadoPlayer)
-		if rootTravado and humTravado and humTravado.Health > 0 then
-			local distTravado = distanciaEfetivaAlvo(meuRoot.Position, rootTravado)
-			if distTravado <= raioPersistencia and distTravado > 0.1 then
-				return rootTravado, alvoTravadoPlayer
-			end
-		end
-	end
-
-	alvoTravadoPlayer = nil
-	local melhorRoot = nil
-	local melhorPlr = nil
-	local menorDist = raioBase
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if jogadorElegivelComoAlvo(plr) then
-			local _, r, hum = getCharAndRoot(plr)
-			if r and hum and hum.Health > 0 then
-				local d = distanciaEfetivaAlvo(meuRoot.Position, r)
-				if d <= raioBase and d > 0.1 and d < menorDist then
-					menorDist = d
-					melhorRoot = r
-					melhorPlr = plr
-				end
-			end
-		end
-	end
-
-	alvoTravadoPlayer = melhorPlr
-	return melhorRoot, melhorPlr
-end
-
 local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 	local melhorRoot = nil
 	local menorDist = raioMax
@@ -999,7 +988,7 @@ local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 		if jogadorElegivelComoAlvo(plr) and (not filtroExtra or filtroExtra(plr)) then
 			local _, r, hum = getCharAndRoot(plr)
 			if r and hum and hum.Health > 0 then
-				local d = distanciaEfetivaAlvo(meuRoot.Position, r)
+				local d = (r.Position - meuRoot.Position).Magnitude
 				if d <= raioMax and d > 0.1 and d < menorDist then
 					menorDist = d
 					melhorRoot = r
@@ -1011,6 +1000,58 @@ local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 	return melhorRoot, menorDist
 end
 
+-- ==========================================
+-- SELECAO PERSISTENTE DO KILL AURA (SEM MORTOS E SEM DESPERDICIO COM MULTIPLOS ALVOS)
+-- ==========================================
+local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
+	if not meuRoot then return nil, nil end
+
+	-- 1) Se ha filtro Focus ativo, prioriza jogador vivo dentro do filtro Focus antes de manter outro
+	if alvoKillAuraPlayer and alvoKillAuraPlayer.Parent == Players and jogadorElegivelComoAlvo(alvoKillAuraPlayer) then
+		local _, rootTravado, humTravado = getCharAndRoot(alvoKillAuraPlayer)
+		if rootTravado and humTravado and humTravado.Health > 0 then
+			local distTravado = (rootTravado.Position - meuRoot.Position).Magnitude
+			local limitePersistencia = raioMax + MARGEM_PERSISTENCIA_KILL_AURA
+			if distTravado <= limitePersistencia and distTravado > 0.1 then
+				return rootTravado, alvoKillAuraPlayer
+			end
+		else
+			alvoKillAuraPlayer = nil
+		end
+	else
+		alvoKillAuraPlayer = nil
+	end
+
+	-- 2) Seleciona um unico alvo vivo e consistente (evita alternar quando ha 2+ no raio)
+	local melhorRoot = nil
+	local melhorPlr = nil
+	local melhorPontuacao = math.huge
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if jogadorElegivelComoAlvo(plr) then
+			local _, r, hum = getCharAndRoot(plr)
+			if r and hum and hum.Health > 0 then
+				local d = (r.Position - meuRoot.Position).Magnitude
+				if d <= raioMax and d > 0.1 then
+					local bonusCaido = jogadorEstaCaidoKnockdown(hum) and -10 or 0
+					local pontuacao = d + bonusCaido
+					if pontuacao < melhorPontuacao then
+						melhorPontuacao = pontuacao
+						melhorRoot = r
+						melhorPlr = plr
+					end
+				end
+			end
+		end
+	end
+
+	alvoKillAuraPlayer = melhorPlr
+	return melhorRoot, melhorPlr
+end
+
+-- ==========================================
+-- BACK / COSTAS (COM FILTRO DEDICADO)
+-- ==========================================
 local function aplicarBackCostas()
 	if not backCostasAtivo then return end
 	if UserInputService:GetFocusedTextBox() then return end
@@ -1040,6 +1081,37 @@ local function aplicarBackCostas()
 	end)
 end
 
+local function obterAlcanceAutoClick()
+	local raioBase = DISTANCIA_MAXIMA
+	if hitboxAtivo then
+		local raioHitbox = hitboxSize + 6
+		if raioHitbox > raioBase then
+			raioBase = raioHitbox
+		end
+	end
+	return raioBase
+end
+
+local function haAlvoVivoNoAlcanceAutoClick(meuRoot)
+	if not meuRoot then return false end
+	local raioEfetivo = obterAlcanceAutoClick()
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if jogadorElegivelComoAlvo(plr) then
+			local _, r, hum = getCharAndRoot(plr)
+			if r and hum and hum.Health > 0 then
+				local d = (r.Position - meuRoot.Position).Magnitude
+				local margemExtraAlvo = hitboxAtivo and (hitboxSize * 0.5) or 0
+				if d <= (raioEfetivo + margemExtraAlvo) and d > 0.1 then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
 local function executarCliqueRapido()
 	if typeof(mouse1click) == "function" then
 		pcall(mouse1click)
@@ -1063,22 +1135,21 @@ local function dispararPulsoAtaque(char)
 	executarCliqueRapido()
 end
 
--- Kill Aura 360 graus (frente, costas e lados) com alcance real completo de 27 studs
 local function processarKillAuraFrame(agora)
 	if not killAuraAtivo then return false end
 	if UserInputService:GetFocusedTextBox() then return false end
 	if (agora - ultimoDisparoKillAuraTick) < DELAY_KILL_AURA then
-		return alvoTravadoPlayer ~= nil
+		return alvoKillAuraPlayer ~= nil
 	end
 
 	local char, meuRoot = getCharAndRoot(LocalPlayer)
 	if not char or not meuRoot then
-		alvoTravadoPlayer = nil
+		alvoKillAuraPlayer = nil
 		return false
 	end
 
-	local alcanceEfetivo = math.max(DISTANCIA_KILL_AURA, obterAlcanceEfetivoMaximo())
-	local alvoProximo = obterOuManterAlvoTravado(meuRoot, alcanceEfetivo, alcanceEfetivo + MARGEM_PERSISTENCIA_TRAVA)
+	local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
+	local alvoProximo = obterAlvoKillAuraPersistente(meuRoot, alcanceEfetivo)
 	if not alvoProximo then
 		pulsoMiraAte = 0
 		yawAntesPulso = nil
@@ -1087,6 +1158,23 @@ local function processarKillAuraFrame(agora)
 	end
 
 	ultimoDisparoKillAuraTick = agora
+
+	if KILL_AURA_PULSO_ALVO then
+		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
+		if yawAntesPulso == nil then
+			yawAntesPulso = yawAtual
+		end
+		local dx = alvoProximo.Position.X - meuRoot.Position.X
+		local dz = alvoProximo.Position.Z - meuRoot.Position.Z
+		if (dx * dx + dz * dz) > 0.0025 then
+			local yawAlvo = math.atan2(-dx, -dz)
+			yawAplicadoNoPulso = yawAlvo
+			pcall(function()
+				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
+			end)
+			pulsoMiraAte = agora + DURACAO_PULSO_MIRA
+		end
+	end
 
 	for _ = 1, RAJADA_KILL_AURA do
 		dispararPulsoAtaque(char)
@@ -1108,14 +1196,7 @@ local function processarAutoClickFrame(agora, killAuraAtacouNesteFrame)
 	if (agora - ultimoDisparoAutoClickTick) < DELAY_CLIQUE then return end
 
 	local char, meuRoot = getCharAndRoot(LocalPlayer)
-	if not meuRoot then
-		alvoTravadoPlayer = nil
-		return
-	end
-
-	local raioEfetivo = obterAlcanceEfetivoMaximo()
-	local alvoAtualAuto = obterOuManterAlvoTravado(meuRoot, raioEfetivo, raioEfetivo + MARGEM_PERSISTENCIA_TRAVA)
-	if alvoAtualAuto then
+	if meuRoot and haAlvoVivoNoAlcanceAutoClick(meuRoot) then
 		ultimoDisparoAutoClickTick = agora
 		for _ = 1, RAJADA_AUTOCLICK do
 			dispararPulsoAtaque(char)
@@ -1140,39 +1221,17 @@ local function restaurarPulsoMiraKillAura()
 	yawAplicadoNoPulso = nil
 end
 
--- ==========================================
--- HITBOX VISUAL QUASE INVISIVEL + SEM TRAVAR PLAYERS (MAX 27)
--- ==========================================
-local function removerCaixaHitboxPlayer(plr)
-	local box = caixasHitboxVisual[plr]
-	if box then
-		pcall(function() box:Destroy() end)
+local function restaurarRoot(part)
+	local saved = originaisRoot[part]
+	if saved and part and part.Parent then
+		pcall(function()
+			part.Size = saved.Size
+			part.Transparency = saved.Transparency
+			part.CanCollide = saved.CanCollide
+		end)
 	end
-	caixasHitboxVisual[plr] = nil
-end
-
-local function garantirCaixaHitboxPlayer(plr, root)
-	local box = caixasHitboxVisual[plr]
-	if box and box.Parent then
-		if box.Adornee ~= root then
-			box.Adornee = root
-		end
-		return box
-	end
-	removerCaixaHitboxPlayer(plr)
-
-	local adorneeBox = Instance.new("BoxHandleAdornment")
-	adorneeBox.Name = "VoidHitboxAdornment"
-	adorneeBox.Adornee = root
-	adorneeBox.AlwaysOnTop = false
-	adorneeBox.ZIndex = 0
-	adorneeBox.Color3 = COR_HITBOX_AURA
-	adorneeBox.Transparency = HITBOX_TRANSPARENCIA_VISIVEL
-	adorneeBox.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-	adorneeBox.Visible = false
-	adorneeBox.Parent = parentGui
-	caixasHitboxVisual[plr] = adorneeBox
-	return adorneeBox
+	originaisRoot[part] = nil
+	ultimoEstadoAplicado[part] = nil
 end
 
 local function limparMarcador(plr)
@@ -1218,17 +1277,20 @@ local function garantirMarcador(plr, root)
 end
 
 local function sincronizarHitboxEMarcadores()
-	local jogadoresAtivos = {}
-	local tamanhoEfetivo = math.clamp(hitboxSize, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
+	local rootsAtivos = {}
 	local transpAlvo = hitboxVisivel and HITBOX_TRANSPARENCIA_VISIVEL or 1
+	local assinaturaAlvo = string.format("%d|%.4f", hitboxSize, transpAlvo)
 
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
 			local char, root, hum = getCharAndRoot(plr)
 			if char and root and hum and hum.Health > 0 then
-				jogadoresAtivos[plr] = true
 				local isAMG = ehAmigoAMG(plr)
 				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
+
+				if isAMG and originaisRoot[root] then
+					restaurarRoot(root)
+				end
 
 				local m = garantirMarcador(plr, root)
 				if m and m.tagGui and m.tagDot then
@@ -1243,30 +1305,38 @@ local function sincronizarHitboxEMarcadores()
 					end
 				end
 
-				local deveMostrarHitbox = hitboxAtivo and hitboxVisivel and jogadorElegivelComoAlvo(plr)
-				local box = garantirCaixaHitboxPlayer(plr, root)
-				if box then
-					if deveMostrarHitbox then
-						box.Visible = true
-						box.Transparency = transpAlvo
-						box.Color3 = COR_HITBOX_AURA
-						box.Size = Vector3.new(tamanhoEfetivo, tamanhoEfetivo, tamanhoEfetivo)
-					else
-						box.Visible = false
+				local deveExpandir = hitboxAtivo and jogadorElegivelComoAlvo(plr)
+				if deveExpandir then
+					rootsAtivos[root] = true
+					if not originaisRoot[root] then
+						originaisRoot[root] = {
+							Size = root.Size,
+							Transparency = root.Transparency,
+							CanCollide = root.CanCollide
+						}
+					end
+					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
+						ultimoEstadoAplicado[root] = assinaturaAlvo
+						pcall(function()
+							root.CanCollide = false
+							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+							root.Color = COR_HITBOX_AURA
+							root.Transparency = transpAlvo
+						end)
 					end
 				end
 			end
 		end
 	end
 
-	for plr in pairs(caixasHitboxVisual) do
-		if not jogadoresAtivos[plr] or plr.Parent ~= Players then
-			removerCaixaHitboxPlayer(plr)
+	for part in pairs(originaisRoot) do
+		if not rootsAtivos[part] then
+			restaurarRoot(part)
 		end
 	end
 
 	for plr in pairs(marcadoresJogadores) do
-		if not jogadoresAtivos[plr] or plr.Parent ~= Players then
+		if plr.Parent ~= Players then
 			limparMarcador(plr)
 		end
 	end
@@ -1559,8 +1629,8 @@ local function criarPainelHitbox()
 	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 190, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
-		hitboxSize = math.clamp(novoSize, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 190, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+		hitboxSize = novoSize
 		sincronizarHitboxEMarcadores()
 	end)
 
@@ -1570,25 +1640,18 @@ local function criarPainelHitbox()
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
-		atualizarCacheFiltros()
-		if alvoTravadoPlayer and not jogadorElegivelComoAlvo(alvoTravadoPlayer) then
-			alvoTravadoPlayer = nil
-		end
+		alvoKillAuraPlayer = nil
 		sincronizarHitboxEMarcadores()
 	end)
 
 	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
 		focusTexto = boxFocus.Text
-		atualizarCacheFiltros()
-		if alvoTravadoPlayer and not jogadorElegivelComoAlvo(alvoTravadoPlayer) then
-			alvoTravadoPlayer = nil
-		end
+		alvoKillAuraPlayer = nil
 		sincronizarHitboxEMarcadores()
 	end)
 
 	boxBackFilter:GetPropertyChangedSignal("Text"):Connect(function()
 		backFilterTexto = boxBackFilter.Text
-		atualizarCacheFiltros()
 	end)
 
 	local pagMove = abasPaginas.Move
@@ -1702,7 +1765,7 @@ local function criarPainelHitbox()
 	infoAtalhos.Size = UDim2.new(1, -16, 0, 88)
 	infoAtalhos.Position = UDim2.new(0, 8, 0, 66)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q (360°)\nPainel: J\nAlcance real completo: 27.\nTrava firme no alvo em combate."
+	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nMortos (Health <= 0) sao ignorados.\nFocus prioriza alvo do PvP."
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
 	infoAtalhos.TextWrapped = true
 	infoAtalhos.Font = Enum.Font.GothamMedium
@@ -1784,8 +1847,8 @@ local function criarPainelHitbox()
 		targetLockHabilitadoNoPainel = not targetLockHabilitadoNoPainel
 		btnLock.Text = targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF"
 		btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
-		if not targetLockHabilitadoNoPainel and not killAuraAtivo then
-			alvoTravadoPlayer = nil
+		if not targetLockHabilitadoNoPainel then
+			alvoAtual = nil
 		end
 	end)
 
@@ -1844,7 +1907,7 @@ local function criarPainelHitbox()
 		if not speedAtivo and getModoSpeedAtual() == "WalkSpeed" then
 			local _, _, hum = getCharAndRoot(LocalPlayer)
 			if hum then
-				hum.WalkSpeed = WALKSPEED_BASE
+				pcall(function() hum.WalkSpeed = WALKSPEED_BASE end)
 			end
 		end
 	end)
@@ -1856,7 +1919,7 @@ local function criarPainelHitbox()
 		if modoAnterior == "WalkSpeed" and getModoSpeedAtual() ~= "WalkSpeed" then
 			local _, _, hum = getCharAndRoot(LocalPlayer)
 			if hum then
-				hum.WalkSpeed = WALKSPEED_BASE
+				pcall(function() hum.WalkSpeed = WALKSPEED_BASE end)
 			end
 		end
 	end)
@@ -1914,6 +1977,17 @@ criarPainelHitbox()
 atualizarVisual(ativo)
 sincronizarNoAnimation()
 
+local function distanciaPara(meuRoot, alvoRoot)
+	if not meuRoot or not alvoRoot or not alvoRoot.Parent then
+		return math.huge
+	end
+	return (alvoRoot.Position - meuRoot.Position).Magnitude
+end
+
+local function acharMaisProximo(meuRoot)
+	return acharMaisProximoGeral(meuRoot, DISTANCIA_MAXIMA)
+end
+
 local function aplicarFocoNoAlvo()
 	if getgenv and getgenv().UniversalTargetLockActive ~= nil then
 		ativo = getgenv().UniversalTargetLockActive
@@ -1921,23 +1995,29 @@ local function aplicarFocoNoAlvo()
 	atualizarVisual(ativo)
 
 	if not ativo or not targetLockHabilitadoNoPainel then
+		alvoAtual = nil
 		return
 	end
 
 	local _, meuRoot = getCharAndRoot(LocalPlayer)
-	if not meuRoot then
-		alvoTravadoPlayer = nil
+	if not meuRoot then return end
+
+	local maisProximo, distMaisProximo = acharMaisProximo(meuRoot)
+	local distAtual = distanciaPara(meuRoot, alvoAtual)
+
+	if not maisProximo then
+		alvoAtual = nil
 		return
+	elseif not alvoAtual or distAtual > DISTANCIA_MAXIMA then
+		alvoAtual = maisProximo
+	elseif maisProximo ~= alvoAtual and (distAtual - distMaisProximo) > MARGEM_TROCA then
+		alvoAtual = maisProximo
 	end
 
-	local raioEfetivo = obterAlcanceEfetivoMaximo()
-	local alvoRoot = obterOuManterAlvoTravado(meuRoot, raioEfetivo, raioEfetivo + MARGEM_PERSISTENCIA_TRAVA)
-	if not alvoRoot or not alvoRoot.Parent then
-		return
-	end
+	if not alvoAtual or not alvoAtual.Parent then return end
 
 	local meuPos = meuRoot.Position
-	local alvoPos = alvoRoot.Position
+	local alvoPos = alvoAtual.Position
 	local dx = alvoPos.X - meuPos.X
 	local dz = alvoPos.Z - meuPos.Z
 
@@ -2012,16 +2092,15 @@ end)
 task.spawn(function()
 	while true do
 		pcall(sincronizarHitboxEMarcadores)
-		task.wait(0.25)
+		task.wait(0.35)
 	end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
-	if alvoTravadoPlayer == plr then
-		alvoTravadoPlayer = nil
+	if alvoKillAuraPlayer == plr then
+		alvoKillAuraPlayer = nil
 	end
-	removerCaixaHitboxPlayer(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Hitbox discreto, alcance 27 real, Kill Aura 360° e players livres!")
+print("[The VOID Painel] Atualizacao completa (1-11) aplicada com foco em desempenho no PvP!")
