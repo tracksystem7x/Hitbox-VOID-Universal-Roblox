@@ -46,6 +46,7 @@ local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
 local JUMPPOWER_BASE = 50
+local JUMP_FATOR_SUAVE = 0.08
 
 local TARGET_LOCK_PADRAO_HABILITADO = true
 local BACK_COSTAS_PADRAO_ATIVO = false
@@ -734,8 +735,16 @@ local function aplicarNoSlow()
 end
 
 -- ==========================================
--- MULTIPLICADOR DE JUMP (JUMPPOWER ATE 1000)
+-- MULTIPLICADOR DE JUMP (REGULADO E SUAVE ATE 1000)
 -- ==========================================
+local function calcularJumpPowerRegulado(baseJp, valorSlider)
+	if valorSlider <= 1 then
+		return baseJp
+	end
+	local escalaSuave = 1 + ((valorSlider - 1) * JUMP_FATOR_SUAVE)
+	return math.clamp(baseJp * escalaSuave, baseJp, baseJp * 12)
+end
+
 local function aplicarJumpMultiplicador()
 	local char, _, hum = getCharAndRoot(LocalPlayer)
 	if not char or not hum then return end
@@ -749,7 +758,7 @@ local function aplicarJumpMultiplicador()
 			if not hum.UseJumpPower then
 				hum.UseJumpPower = true
 			end
-			local jpAlvo = jumpPowerOriginalSalvo * jumpMultiValor
+			local jpAlvo = calcularJumpPowerRegulado(jumpPowerOriginalSalvo, jumpMultiValor)
 			if math.abs(hum.JumpPower - jpAlvo) > 0.05 then
 				hum.JumpPower = jpAlvo
 			end
@@ -841,7 +850,7 @@ local function aplicarAntiGrabRag()
 end
 
 -- ==========================================
--- SPEED MULTI-MODO + CFRAME SPEED BLINDADO
+-- SPEED MULTI-MODO + CFRAME SPEED (ESCALA ORIGINAL + ANIMACAO)
 -- ==========================================
 local function obterDirecaoMovimentoCFrame(hum)
 	local dir = hum and hum.MoveDirection or Vector3.zero
@@ -890,25 +899,19 @@ local function restaurarWalkSpeedSeNecessario()
 	end
 end
 
-local function executarPassoCFrameBlindado(meuRoot, hum, dt)
+local function executarPassoCFrameOriginal(meuRoot, hum, dt)
+	if hum and hum.Sit then return end
 	local dir = obterDirecaoMovimentoCFrame(hum)
 	if dir.Magnitude <= 0.01 then return end
 
-	local delta = math.clamp(dt, 0.0005, 0.05)
-	local velocidadeUnidades = WALKSPEED_BASE * speedCFrameValor
-	local passo = dir * (velocidadeUnidades * delta)
-
+	local passo = dir * (speedCFrameValor * math.clamp(dt, 0.001, 0.05))
 	pcall(function()
-		if hum and hum.Sit then
-			hum.Sit = false
-		end
-		meuRoot.AssemblyLinearVelocity = Vector3.new(0, meuRoot.AssemblyLinearVelocity.Y, 0)
 		meuRoot.AssemblyAngularVelocity = Vector3.zero
 		meuRoot.CFrame = meuRoot.CFrame + passo
 	end)
 end
 
-local function aplicarSpeedMultiModo(dt, permitirCFrame)
+local function aplicarSpeedMultiModo(dt)
 	if not speedCFrameAtivo then
 		restaurarWalkSpeedSeNecessario()
 		return
@@ -922,32 +925,28 @@ local function aplicarSpeedMultiModo(dt, permitirCFrame)
 
 	if modo == "CFrame" then
 		restaurarWalkSpeedSeNecessario()
-		if permitirCFrame then
-			executarPassoCFrameBlindado(meuRoot, hum, dt)
-		end
+		executarPassoCFrameOriginal(meuRoot, hum, dt)
 	elseif modo == "WalkSpeed" then
 		pcall(function()
 			if walkSpeedOriginalSalvo == nil then
 				local atualWs = hum.WalkSpeed
 				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
 			end
-			local wsAlvo = math.clamp(walkSpeedOriginalSalvo * speedCFrameValor, 1, 5000)
+			local wsAlvo = math.clamp(walkSpeedOriginalSalvo + (speedCFrameValor - 1), 1, 500)
 			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
 				hum.WalkSpeed = wsAlvo
 			end
 		end)
 	elseif modo == "AssemblyVel" then
 		restaurarWalkSpeedSeNecessario()
-		if permitirCFrame then
+		if not (hum and hum.Sit) then
 			local dir = obterDirecaoMovimentoCFrame(hum)
-			pcall(function()
-				if dir.Magnitude > 0.01 then
-					local velHorizontal = dir * (WALKSPEED_BASE * speedCFrameValor)
+			if dir.Magnitude > 0.01 then
+				pcall(function()
+					local velHorizontal = dir * (WALKSPEED_BASE + (speedCFrameValor - 1))
 					meuRoot.AssemblyLinearVelocity = Vector3.new(velHorizontal.X, meuRoot.AssemblyLinearVelocity.Y, velHorizontal.Z)
-				else
-					meuRoot.AssemblyLinearVelocity = Vector3.new(0, meuRoot.AssemblyLinearVelocity.Y, 0)
-				end
-			end)
+				end)
+			end
 		end
 	elseif modo == "Hybrid (CF+WS)" then
 		pcall(function()
@@ -955,14 +954,12 @@ local function aplicarSpeedMultiModo(dt, permitirCFrame)
 				local atualWs = hum.WalkSpeed
 				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
 			end
-			local wsAlvo = math.clamp(walkSpeedOriginalSalvo * speedCFrameValor, 1, 5000)
+			local wsAlvo = math.clamp(walkSpeedOriginalSalvo + (speedCFrameValor * 0.25), 1, 300)
 			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
 				hum.WalkSpeed = wsAlvo
 			end
 		end)
-		if permitirCFrame then
-			executarPassoCFrameBlindado(meuRoot, hum, dt)
-		end
+		executarPassoCFrameOriginal(meuRoot, hum, dt)
 	end
 end
 
@@ -1799,7 +1796,7 @@ local function criarPainelHitbox()
 	dicaMove.Size = UDim2.new(1, -16, 0, 46)
 	dicaMove.Position = UDim2.new(0, 8, 0, 160)
 	dicaMove.BackgroundTransparency = 1
-	dicaMove.Text = "Modos: CFrame (blindado), WalkSpeed, AssemblyVel ou Hybrid. Jump ate 1000x."
+	dicaMove.Text = "CFrame na escala original mantendo animacao. Jump regulado e suave."
 	dicaMove.TextColor3 = Color3.fromRGB(165, 165, 180)
 	dicaMove.TextWrapped = true
 	dicaMove.Font = Enum.Font.Gotham
@@ -2170,7 +2167,7 @@ RunService.Heartbeat:Connect(function(dt)
 	aplicarJumpMultiplicador()
 	aplicarAntiRagdoll()
 	aplicarAntiGrabRag()
-	aplicarSpeedMultiModo(dt, true)
+	aplicarSpeedMultiModo(dt)
 
 	local killAuraAtacou = processarKillAuraFrame(agora)
 	processarAutoClickFrame(agora, killAuraAtacou)
