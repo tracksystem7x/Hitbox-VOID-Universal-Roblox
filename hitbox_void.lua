@@ -37,7 +37,7 @@ local DISTANCIA_MAXIMA_COSTAS = 45
 local DISTANCIA_KILL_AURA = 30
 local MARGEM_PERSISTENCIA_KILL_AURA = 6
 local DELAY_KILL_AURA = 0.001
-local RAJADA_KILL_AURA = 3
+local RAJADA_KILL_AURA = 5
 local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
 
@@ -1053,12 +1053,11 @@ local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 end
 
 -- ==========================================
--- SELECAO PERSISTENTE DO KILL AURA (NAO SOLTA ALVO CAIDO POR 8 HITS)
+-- SELECAO PERSISTENTE DO KILL AURA (QUALQUER ANGULO NO ALCANCE)
 -- ==========================================
 local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
 	if not meuRoot then return nil, nil end
 
-	-- 1) Se ja temos um alvo travado e vivo (mesmo caido no chao pelos 8 hits), mantem foco nele!
 	if alvoKillAuraPlayer and alvoKillAuraPlayer.Parent == Players and jogadorElegivelComoAlvo(alvoKillAuraPlayer) then
 		local _, rootTravado, humTravado = getCharAndRoot(alvoKillAuraPlayer)
 		if rootTravado and humTravado and humTravado.Health > 0 then
@@ -1070,7 +1069,6 @@ local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
 		end
 	end
 
-	-- 2) Busca novo alvo elegivel: prioriza quem ja esta caido (janela de 2s) ou o mais proximo
 	local melhorRoot = nil
 	local melhorPlr = nil
 	local melhorPontuacao = math.huge
@@ -1274,6 +1272,9 @@ local function restaurarRoot(part)
 			part.Size = saved.Size
 			part.Transparency = saved.Transparency
 			part.CanCollide = saved.CanCollide
+			if saved.Massless ~= nil then
+				part.Massless = saved.Massless
+			end
 		end)
 	end
 	originaisRoot[part] = nil
@@ -1355,16 +1356,19 @@ local function sincronizarHitboxEMarcadores()
 				if deveExpandir then
 					rootsAtivos[root] = true
 					if not originaisRoot[root] then
+						local okMass, curMass = pcall(function() return root.Massless end)
 						originaisRoot[root] = {
 							Size = root.Size,
 							Transparency = root.Transparency,
-							CanCollide = root.CanCollide
+							CanCollide = root.CanCollide,
+							Massless = okMass and curMass or nil
 						}
 					end
 					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
 						ultimoEstadoAplicado[root] = assinaturaAlvo
 						pcall(function()
 							root.CanCollide = false
+							root.Massless = true
 							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 							root.Color = COR_HITBOX_AURA
 							root.Transparency = transpAlvo
