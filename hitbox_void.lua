@@ -1009,8 +1009,21 @@ end
 local function jogadorElegivelComoAlvo(plr)
 	if not plr or plr == LocalPlayer then return false end
 	if ehAmigoAMG(plr) then return false end
-	if not ehAlvoFocus(plr) then return false end
+	if temFiltroFocusAtivo() and not ehAlvoFocus(plr) then return false end
 	return true
+end
+
+local function haAmigoProximoNoAlcance(meuRoot, raio)
+	if not meuRoot then return false end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and ehAmigoAMG(plr) then
+			local _, r = getCharAndRoot(plr)
+			if r and (r.Position - meuRoot.Position).Magnitude <= raio then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 local function elegivelParaBackCostas(plr)
@@ -1053,7 +1066,7 @@ local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
 end
 
 -- ==========================================
--- SELECAO PERSISTENTE DO KILL AURA (QUALQUER ANGULO NO ALCANCE)
+-- SELECAO PERSISTENTE DO KILL AURA (FOCUS ESTRITO + ZERO AMIGOS)
 -- ==========================================
 local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
 	if not meuRoot then return nil, nil end
@@ -1067,6 +1080,7 @@ local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
 				return rootTravado, alvoKillAuraPlayer
 			end
 		end
+		alvoKillAuraPlayer = nil
 	end
 
 	local melhorRoot = nil
@@ -1169,7 +1183,11 @@ local function executarCliqueRapido()
 	end
 end
 
-local function dispararPulsoAtaque(char)
+local function dispararPulsoAtaque(char, meuRoot)
+	-- Evita atingir amigos (AMG) quando houver amigo proximo dentro da janela do golpe/grab
+	if meuRoot and haAmigoProximoNoAlcance(meuRoot, math.max(12, hitboxAtivo and (hitboxSize + 4) or 12)) then
+		return
+	end
 	if char then
 		local tool = char:FindFirstChildOfClass("Tool")
 		if tool and tool.Parent == char then
@@ -1223,7 +1241,7 @@ local function processarKillAuraFrame(agora)
 	end
 
 	for _ = 1, RAJADA_KILL_AURA do
-		dispararPulsoAtaque(char)
+		dispararPulsoAtaque(char, meuRoot)
 	end
 
 	return true
@@ -1244,7 +1262,7 @@ local function processarAutoClickFrame(agora, killAuraAtacouNesteFrame)
 	local char, meuRoot = getCharAndRoot(LocalPlayer)
 	if meuRoot and haAlvoNoAlcanceAutoClick(meuRoot) then
 		ultimoDisparoAutoClickTick = agora
-		dispararPulsoAtaque(char)
+		dispararPulsoAtaque(char, meuRoot)
 	end
 end
 
@@ -1332,7 +1350,7 @@ local function sincronizarHitboxEMarcadores()
 				local isAMG = ehAmigoAMG(plr)
 				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
 
-				if isAMG and originaisRoot[root] then
+				if (isAMG or (temFiltroFocusAtivo() and not isFocus)) and originaisRoot[root] then
 					restaurarRoot(root)
 				end
 
