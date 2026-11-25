@@ -33,7 +33,7 @@ local ORBITAR = false
 local DISTANCIA_COSTAS = 3.2
 local DISTANCIA_MAXIMA_COSTAS = 45
 
-local DISTANCIA_KILL_AURA = 21
+local DISTANCIA_KILL_AURA = 30
 local DELAY_KILL_AURA = 0.02
 local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
@@ -691,6 +691,13 @@ local function temFiltroFocusAtivo()
 	return #splitListaNomes(focusTexto) > 0
 end
 
+local function jogadorElegivelComoAlvo(plr)
+	if not plr or plr == LocalPlayer then return false end
+	if ehAmigoAMG(plr) then return false end
+	if not ehAlvoFocus(plr) then return false end
+	return true
+end
+
 local function normalizarAngulo(ang)
 	while ang > math.pi do
 		ang -= math.pi * 2
@@ -706,7 +713,7 @@ local function acharMaisProximoGeral(meuRoot, raioMax)
 	local menorDist = raioMax
 
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
+		if jogadorElegivelComoAlvo(plr) then
 			local _, r = getCharAndRoot(plr)
 			if r then
 				local d = (r.Position - meuRoot.Position).Magnitude
@@ -773,7 +780,7 @@ local function haAlvoNoAlcanceAutoClick(meuRoot)
 	local raioEfetivo = obterAlcanceAutoClick()
 
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer and not ehAmigoAMG(plr) and ehAlvoFocus(plr) then
+		if jogadorElegivelComoAlvo(plr) then
 			local _, r = getCharAndRoot(plr)
 			if r then
 				local d = (r.Position - meuRoot.Position).Magnitude
@@ -923,7 +930,7 @@ local function sincronizarHitboxEMarcadores()
 			local char, root = getCharAndRoot(plr)
 			if char and root then
 				local isAMG = ehAmigoAMG(plr)
-				local isFocus = temFiltroFocusAtivo() and ehAlvoFocus(plr)
+				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
 
 				local m = garantirMarcador(plr, root)
 				if m and m.tagGui and m.tagDot then
@@ -938,7 +945,7 @@ local function sincronizarHitboxEMarcadores()
 					end
 				end
 
-				local deveExpandir = hitboxAtivo and (not isAMG) and ehAlvoFocus(plr)
+				local deveExpandir = hitboxAtivo and jogadorElegivelComoAlvo(plr)
 				if deveExpandir then
 					rootsAtivos[root] = true
 					if not originaisRoot[root] then
@@ -1683,4 +1690,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Kill Aura sem pulso de giro para evitar glitch visual!")
+print("[The VOID Painel] Filtro AMG/Focus corrigido e alcance do Kill Aura aumentado para 30!")
