@@ -30,12 +30,12 @@ local MARGEM_TROCA = 3.5
 local FIRMEZA_GIRO = 1.0
 local ORBITAR = false
 
-local DISTANCIA_COSTAS = 4.5
+local DISTANCIA_COSTAS = 3.2
 local DISTANCIA_MAXIMA_COSTAS = 45
 
 local DISTANCIA_KILL_AURA = 21
-local DELAY_KILL_AURA = 0.001
-local KILL_AURA_PULSO_ALVO = true
+local DELAY_KILL_AURA = 0.02
+local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
 
 local ATIVAR_AUTOCLICK_JUNTO = true
@@ -746,7 +746,6 @@ local function aplicarBackCostas()
 		lookInimigoPlano = lookInimigoPlano.Unit
 	end
 
-	-- Fica atras do inimigo (-LookVector) e olhando na direcao das costas dele (+LookVector)
 	local posCostas = inimigoRoot.Position - (lookInimigoPlano * DISTANCIA_COSTAS)
 	local posFinal = Vector3.new(posCostas.X, meuRoot.Position.Y, posCostas.Z)
 	local destinoCFrame = CFrame.lookAt(posFinal, posFinal + lookInimigoPlano)
@@ -1180,9 +1179,6 @@ local function criarPainelHitbox()
 		end)
 	end
 
-	-- ==========================================
-	-- ABA 1: COMBAT
-	-- ==========================================
 	local pagCombat = abasPaginas.Combat
 	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 20), 11)
 	local btnLock = criarBotaoPadrao(
@@ -1284,9 +1280,6 @@ local function criarPainelHitbox()
 		sincronizarHitboxEMarcadores()
 	end)
 
-	-- ==========================================
-	-- ABA 2: MOVE
-	-- ==========================================
 	local pagMove = abasPaginas.Move
 	local btnSpeed = criarBotaoPadrao(
 		pagMove,
@@ -1313,9 +1306,6 @@ local function criarPainelHitbox()
 	dicaMove.TextXAlignment = Enum.TextXAlignment.Left
 	dicaMove.Parent = pagMove
 
-	-- ==========================================
-	-- ABA 3: VISUAL
-	-- ==========================================
 	local pagVisual = abasPaginas.Visual
 	local btnNoAnim = criarBotaoPadrao(
 		pagVisual,
@@ -1356,9 +1346,6 @@ local function criarPainelHitbox()
 	dicaVisual.TextXAlignment = Enum.TextXAlignment.Left
 	dicaVisual.Parent = pagVisual
 
-	-- ==========================================
-	-- ABA 4: CONFIG
-	-- ==========================================
 	local pagConfig = abasPaginas.Config
 	local btnResetPos = criarBotaoPadrao(
 		pagConfig,
@@ -1696,4 +1683,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Carregado com Back / Costas na aba Combat!")
+print("[The VOID Painel] Kill Aura sem pulso de giro para evitar glitch visual!")
