@@ -60,7 +60,7 @@ local SPEED_CFRAME_MAX = 200
 
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
-local HITBOX_MAX_SLIDER = 27
+local HITBOX_MAX_SLIDER = 40
 local HITBOX_VISIVEL_PADRAO = true
 local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
 local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
@@ -655,7 +655,7 @@ local function splitListaNomes(texto)
 		return lista
 	end
 	for token in texto:gmatch("[^%s,;|]+") do
-		local limpo = token:lower()
+		local limpo = token:match("^%s*(.-)%s*$"):lower()
 		if limpo ~= "" then
 			table.insert(lista, limpo)
 		end
@@ -668,7 +668,8 @@ local function combinaComLista(plr, lista)
 	local nomeUser = (plr.Name or ""):lower()
 	local nomeDisplay = (plr.DisplayName or ""):lower()
 	for _, termo in ipairs(lista) do
-		if nomeUser:find(termo, 1, true) or nomeDisplay:find(termo, 1, true) then
+		if (nomeUser ~= "" and nomeUser:find(termo, 1, true))
+			or (nomeDisplay ~= "" and nomeDisplay:find(termo, 1, true)) then
 			return true
 		end
 	end
@@ -767,7 +768,7 @@ end
 local function obterAlcanceAutoClick()
 	local raioBase = DISTANCIA_MAXIMA
 	if hitboxAtivo then
-		local raioHitbox = (hitboxSize * 0.5) + 4
+		local raioHitbox = hitboxSize + 6
 		if raioHitbox > raioBase then
 			raioBase = raioHitbox
 		end
@@ -810,7 +811,8 @@ local function dispararCicloKillAura()
 	local _, meuRoot = getCharAndRoot(LocalPlayer)
 	if not meuRoot then return end
 
-	local alvoProximo = acharMaisProximoKillAura(meuRoot, DISTANCIA_KILL_AURA)
+	local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
+	local alvoProximo = acharMaisProximoKillAura(meuRoot, alcanceEfetivo)
 	if not alvoProximo then
 		pulsoMiraAte = 0
 		yawAntesPulso = nil
@@ -931,6 +933,10 @@ local function sincronizarHitboxEMarcadores()
 			if char and root then
 				local isAMG = ehAmigoAMG(plr)
 				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
+
+				if isAMG and originaisRoot[root] then
+					restaurarRoot(root)
+				end
 
 				local m = garantirMarcador(plr, root)
 				if m and m.tagGui and m.tagDot then
@@ -1543,7 +1549,8 @@ task.spawn(function()
 	while true do
 		if killAuraAtivo and not UserInputService:GetFocusedTextBox() then
 			local _, meuRoot = getCharAndRoot(LocalPlayer)
-			if meuRoot and acharMaisProximoKillAura(meuRoot, DISTANCIA_KILL_AURA) then
+			local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
+			if meuRoot and acharMaisProximoKillAura(meuRoot, alcanceEfetivo) then
 				dispararCicloKillAura()
 			end
 			task.wait(DELAY_KILL_AURA)
@@ -1690,4 +1697,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Filtro AMG/Focus corrigido e alcance do Kill Aura aumentado para 30!")
+print("[The VOID Painel] Hitbox ate 40 e filtro de AMG reforçado!")
