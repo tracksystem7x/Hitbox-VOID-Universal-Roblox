@@ -75,7 +75,7 @@ local HITBOX_TAMANHO_PADRAO = 12
 local HITBOX_MIN_SLIDER = 3
 local HITBOX_MAX_SLIDER = 27
 local HITBOX_VISIVEL_PADRAO = true
-local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
+local HITBOX_TRANSPARENCIA_VISIVEL = 0.82
 local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
 
 -- Tema Roxo Nexus
@@ -128,8 +128,7 @@ local cacheAMG = {}
 local cacheFocus = {}
 local cacheBack = {}
 
-local originaisRoot = {}
-local ultimoEstadoAplicado = {}
+local caixasHitboxVisual = {}
 local marcadoresJogadores = {}
 local animConexoes = {}
 local ultimoEspecialTick = 0
@@ -1159,20 +1158,38 @@ local function restaurarPulsoMiraKillAura()
 end
 
 -- ==========================================
--- HITBOX SEM TRAVAR FISICA DOS JOGADORES (LIMITE MAXIMO 27)
+-- HITBOX VISUAL NAO-BLOQUEANTE (NAO TRAVA FISICA DOS PLAYERS)
 -- ==========================================
-local function restaurarRoot(part)
-	local saved = originaisRoot[part]
-	if saved and part and part.Parent then
-		pcall(function()
-			part.Size = saved.Size
-			part.Transparency = saved.Transparency
-			part.CanCollide = saved.CanCollide
-			part.Massless = saved.Massless
-		end)
+local function removerCaixaHitboxPlayer(plr)
+	local box = caixasHitboxVisual[plr]
+	if box then
+		pcall(function() box:Destroy() end)
 	end
-	originaisRoot[part] = nil
-	ultimoEstadoAplicado[part] = nil
+	caixasHitboxVisual[plr] = nil
+end
+
+local function garantirCaixaHitboxPlayer(plr, root)
+	local box = caixasHitboxVisual[plr]
+	if box and box.Parent then
+		if box.Adornee ~= root then
+			box.Adornee = root
+		end
+		return box
+	end
+	removerCaixaHitboxPlayer(plr)
+
+	local adorneeBox = Instance.new("BoxHandleAdornment")
+	adorneeBox.Name = "VoidHitboxAdornment"
+	adorneeBox.Adornee = root
+	adorneeBox.AlwaysOnTop = false
+	adorneeBox.ZIndex = 1
+	adorneeBox.Color3 = COR_HITBOX_AURA
+	adorneeBox.Transparency = 1
+	adorneeBox.Size = Vector3.new(4, 4, 4)
+	adorneeBox.Visible = false
+	adorneeBox.Parent = parentGui
+	caixasHitboxVisual[plr] = adorneeBox
+	return adorneeBox
 end
 
 local function limparMarcador(plr)
@@ -1218,21 +1235,17 @@ local function garantirMarcador(plr, root)
 end
 
 local function sincronizarHitboxEMarcadores()
-	local rootsAtivos = {}
+	local jogadoresAtivos = {}
 	local tamanhoEfetivo = math.clamp(hitboxSize, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
 	local transpAlvo = hitboxVisivel and HITBOX_TRANSPARENCIA_VISIVEL or 1
-	local assinaturaAlvo = string.format("%d|%.4f", tamanhoEfetivo, transpAlvo)
 
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
 			local char, root, hum = getCharAndRoot(plr)
 			if char and root and hum and hum.Health > 0 then
+				jogadoresAtivos[plr] = true
 				local isAMG = ehAmigoAMG(plr)
 				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
-
-				if isAMG and originaisRoot[root] then
-					restaurarRoot(root)
-				end
 
 				local m = garantirMarcador(plr, root)
 				if m and m.tagGui and m.tagDot then
@@ -1247,40 +1260,30 @@ local function sincronizarHitboxEMarcadores()
 					end
 				end
 
-				local deveExpandir = hitboxAtivo and jogadorElegivelComoAlvo(plr)
-				if deveExpandir then
-					rootsAtivos[root] = true
-					if not originaisRoot[root] then
-						originaisRoot[root] = {
-							Size = root.Size,
-							Transparency = root.Transparency,
-							CanCollide = root.CanCollide,
-							Massless = root.Massless
-						}
-					end
-					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or math.abs(root.Size.X - tamanhoEfetivo) > 0.01 then
-						ultimoEstadoAplicado[root] = assinaturaAlvo
-						pcall(function()
-							root.CanCollide = false
-							root.Massless = true
-							root.Size = Vector3.new(tamanhoEfetivo, tamanhoEfetivo, tamanhoEfetivo)
-							root.Color = COR_HITBOX_AURA
-							root.Transparency = transpAlvo
-						end)
+				local deveMostrarHitbox = hitboxAtivo and hitboxVisivel and jogadorElegivelComoAlvo(plr)
+				local box = garantirCaixaHitboxPlayer(plr, root)
+				if box then
+					if deveMostrarHitbox then
+						box.Visible = true
+						box.Transparency = transpAlvo
+						box.Color3 = COR_HITBOX_AURA
+						box.Size = Vector3.new(tamanhoEfetivo, tamanhoEfetivo, tamanhoEfetivo)
+					else
+						box.Visible = false
 					end
 				end
 			end
 		end
 	end
 
-	for part in pairs(originaisRoot) do
-		if not rootsAtivos[part] then
-			restaurarRoot(part)
+	for plr in pairs(caixasHitboxVisual) do
+		if not jogadoresAtivos[plr] or plr.Parent ~= Players then
+			removerCaixaHitboxPlayer(plr)
 		end
 	end
 
 	for plr in pairs(marcadoresJogadores) do
-		if plr.Parent ~= Players then
+		if not jogadoresAtivos[plr] or plr.Parent ~= Players then
 			limparMarcador(plr)
 		end
 	end
@@ -2034,7 +2037,8 @@ Players.PlayerRemoving:Connect(function(plr)
 	if alvoTravadoPlayer == plr then
 		alvoTravadoPlayer = nil
 	end
+	removerCaixaHitboxPlayer(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Indicador nítido, limite 27 no Hitbox e movimentação dos players liberada!")
+print("[The VOID Painel] Hitbox sem travar players, limite 27 e foco travado aplicados!")
