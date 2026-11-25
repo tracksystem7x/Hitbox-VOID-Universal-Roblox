@@ -35,13 +35,14 @@ local DISTANCIA_COSTAS = 3.2
 local DISTANCIA_MAXIMA_COSTAS = 45
 
 local DISTANCIA_KILL_AURA = 30
+local MARGEM_PERSISTENCIA_KILL_AURA = 6
 local DELAY_KILL_AURA = 0.001
-local RAJADA_KILL_AURA = 4
+local RAJADA_KILL_AURA = 3
 local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
 
 local ATIVAR_AUTOCLICK_JUNTO = true
-local DELAY_CLIQUE = 0.0005
+local DELAY_CLIQUE = 0.001
 
 local WALKSPEED_BASE = 16
 
@@ -93,7 +94,11 @@ local hudStatsVisivel = HUD_STATS_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
 local speedCFrameValor = SPEED_CFRAME_PADRAO
 local boostFpsRedeAtivo = false
+
 local alvoAtual = nil
+local alvoKillAuraPlayer = nil
+local ultimoDisparoKillAuraTick = 0
+local ultimoDisparoAutoClickTick = 0
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
 local hitboxVisivel = HITBOX_VISIVEL_PADRAO
@@ -132,6 +137,7 @@ local function setKillAuraEstado(novoEstado)
 	ultimoToggleKillAura = agora
 	killAuraAtivo = novoEstado
 	if not killAuraAtivo then
+		alvoKillAuraPlayer = nil
 		pulsoMiraAte = 0
 		yawAntesPulso = nil
 		yawAplicadoNoPulso = nil
@@ -524,11 +530,11 @@ end
 
 local function recuperarEstadoAposQueda(novoChar)
 	alvoAtual = nil
+	alvoKillAuraPlayer = nil
 	pulsoMiraAte = 0
 	yawAntesPulso = nil
 	yawAplicadoNoPulso = nil
 
-	-- Garante que os estados visuais e flags continuem sincronizados apos cair
 	atualizarVisual(ativo)
 	atualizarKillAuraUI(killAuraAtivo)
 
@@ -541,7 +547,6 @@ local function recuperarEstadoAposQueda(novoChar)
 				end
 			end)
 		end
-		-- Re-equipa a primeira Tool da mochila caso o personagem tenha derrubado/perdido ao cair
 		local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
 		if backpack and hum then
 			task.wait(0.25)
@@ -615,9 +620,22 @@ local function getCharAndRoot(plr)
 	local char = plr and plr.Character
 	if not char then return nil, nil, nil end
 	local hum = char:FindFirstChildOfClass("Humanoid")
+	-- Só considera morto quando Health <= 0 (se estiver caido por 8 hits, Health > 0 continua vivo!)
 	if hum and hum.Health <= 0 then return char, nil, hum end
 	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
 	return char, root, hum
+end
+
+local function jogadorEstaCaidoKnockdown(hum)
+	if not hum or hum.Health <= 0 then return false end
+	if hum.PlatformStand then return true end
+	local ok, st = pcall(function() return hum:GetState() end)
+	if ok and (st == Enum.HumanoidStateType.Ragdoll
+		or st == Enum.HumanoidStateType.FallingDown
+		or st == Enum.HumanoidStateType.Physics) then
+		return true
+	end
+	return false
 end
 
 -- ==========================================
@@ -851,8 +869,49 @@ local function acharMaisProximoGeral(meuRoot, raioMax)
 	return melhorRoot, menorDist
 end
 
-local function acharMaisProximoKillAura(meuRoot, raioMax)
-	return acharMaisProximoGeral(meuRoot, raioMax)
+-- ==========================================
+-- SELECAO PERSISTENTE DO KILL AURA (NAO SOLTA ALVO CAIDO POR 8 HITS)
+-- ==========================================
+local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
+	if not meuRoot then return nil, nil end
+
+	-- 1) Se ja temos um alvo travado e vivo (mesmo caido no chao pelos 8 hits), mantem foco nele!
+	if alvoKillAuraPlayer and alvoKillAuraPlayer.Parent == Players and jogadorElegivelComoAlvo(alvoKillAuraPlayer) then
+		local _, rootTravado, humTravado = getCharAndRoot(alvoKillAuraPlayer)
+		if rootTravado and humTravado and humTravado.Health > 0 then
+			local distTravado = (rootTravado.Position - meuRoot.Position).Magnitude
+			local limitePersistencia = raioMax + MARGEM_PERSISTENCIA_KILL_AURA
+			if distTravado <= limitePersistencia and distTravado > 0.1 then
+				return rootTravado, alvoKillAuraPlayer
+			end
+		end
+	end
+
+	-- 2) Busca novo alvo elegivel: prioriza quem ja esta caido (janela de 2s) ou o mais proximo
+	local melhorRoot = nil
+	local melhorPlr = nil
+	local melhorPontuacao = math.huge
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if jogadorElegivelComoAlvo(plr) then
+			local _, r, hum = getCharAndRoot(plr)
+			if r and hum and hum.Health > 0 then
+				local d = (r.Position - meuRoot.Position).Magnitude
+				if d <= raioMax and d > 0.1 then
+					local bonusCaido = jogadorEstaCaidoKnockdown(hum) and -12 or 0
+					local pontuacao = d + bonusCaido
+					if pontuacao < melhorPontuacao then
+						melhorPontuacao = pontuacao
+						melhorRoot = r
+						melhorPlr = plr
+					end
+				end
+			end
+		end
+	end
+
+	alvoKillAuraPlayer = melhorPlr
+	return melhorRoot, melhorPlr
 end
 
 -- ==========================================
@@ -941,18 +1000,29 @@ local function dispararPulsoAtaque(char)
 	executarCliqueRapido()
 end
 
-local function dispararCicloKillAura()
+local function processarKillAuraFrame(agora)
+	if not killAuraAtivo then return false end
+	if UserInputService:GetFocusedTextBox() then return false end
+	if (agora - ultimoDisparoKillAuraTick) < DELAY_KILL_AURA then
+		return alvoKillAuraPlayer ~= nil
+	end
+
 	local char, meuRoot = getCharAndRoot(LocalPlayer)
-	if not char or not meuRoot then return end
+	if not char or not meuRoot then
+		alvoKillAuraPlayer = nil
+		return false
+	end
 
 	local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
-	local alvoProximo = acharMaisProximoKillAura(meuRoot, alcanceEfetivo)
+	local alvoProximo = obterAlvoKillAuraPersistente(meuRoot, alcanceEfetivo)
 	if not alvoProximo then
 		pulsoMiraAte = 0
 		yawAntesPulso = nil
 		yawAplicadoNoPulso = nil
-		return
+		return false
 	end
+
+	ultimoDisparoKillAuraTick = agora
 
 	if KILL_AURA_PULSO_ALVO then
 		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
@@ -967,11 +1037,32 @@ local function dispararCicloKillAura()
 			pcall(function()
 				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
 			end)
-			pulsoMiraAte = os.clock() + DURACAO_PULSO_MIRA
+			pulsoMiraAte = agora + DURACAO_PULSO_MIRA
 		end
 	end
 
 	for _ = 1, RAJADA_KILL_AURA do
+		dispararPulsoAtaque(char)
+	end
+
+	return true
+end
+
+local function processarAutoClickFrame(agora, killAuraAtacouNesteFrame)
+	if killAuraAtacouNesteFrame then return end
+
+	local estaLigado = ativo
+	if getgenv and getgenv().UniversalTargetLockActive ~= nil then
+		estaLigado = getgenv().UniversalTargetLockActive
+	end
+
+	if not estaLigado or not ATIVAR_AUTOCLICK_JUNTO then return end
+	if UserInputService:GetFocusedTextBox() then return end
+	if (agora - ultimoDisparoAutoClickTick) < DELAY_CLIQUE then return end
+
+	local char, meuRoot = getCharAndRoot(LocalPlayer)
+	if meuRoot and haAlvoNoAlcanceAutoClick(meuRoot) then
+		ultimoDisparoAutoClickTick = agora
 		dispararPulsoAtaque(char)
 	end
 end
@@ -1411,11 +1502,13 @@ local function criarPainelHitbox()
 
 	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
 		amgTexto = boxAMG.Text
+		alvoKillAuraPlayer = nil
 		sincronizarHitboxEMarcadores()
 	end)
 
 	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
 		focusTexto = boxFocus.Text
+		alvoKillAuraPlayer = nil
 		sincronizarHitboxEMarcadores()
 	end)
 
@@ -1687,40 +1780,6 @@ criarPainelHitbox()
 atualizarVisual(ativo)
 sincronizarNoAnimation()
 
-task.spawn(function()
-	while true do
-		if killAuraAtivo and not UserInputService:GetFocusedTextBox() then
-			local _, meuRoot = getCharAndRoot(LocalPlayer)
-			local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
-			if meuRoot and acharMaisProximoKillAura(meuRoot, alcanceEfetivo) then
-				dispararCicloKillAura()
-			end
-			task.wait(DELAY_KILL_AURA)
-		else
-			task.wait(0.03)
-		end
-	end
-end)
-
-task.spawn(function()
-	while true do
-		local estaLigado = ativo
-		if getgenv and getgenv().UniversalTargetLockActive ~= nil then
-			estaLigado = getgenv().UniversalTargetLockActive
-		end
-
-		if estaLigado and ATIVAR_AUTOCLICK_JUNTO and not UserInputService:GetFocusedTextBox() then
-			local _, meuRoot = getCharAndRoot(LocalPlayer)
-			if meuRoot and haAlvoNoAlcanceAutoClick(meuRoot) then
-				executarCliqueRapido()
-			end
-			task.wait(DELAY_CLIQUE)
-		else
-			task.wait(0.03)
-		end
-	end
-end)
-
 local function distanciaPara(meuRoot, alvoRoot)
 	if not meuRoot or not alvoRoot or not alvoRoot.Parent then
 		return math.huge
@@ -1821,11 +1880,15 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 RunService.Heartbeat:Connect(function(dt)
+	local agora = os.clock()
 	aplicarBackCostas()
 	aplicarNoSlow()
 	aplicarAntiRagdoll()
 	aplicarAntiGrabRag()
 	aplicarSpeedCFrame(dt)
+
+	local killAuraAtacou = processarKillAuraFrame(agora)
+	processarAutoClickFrame(agora, killAuraAtacou)
 end)
 
 task.spawn(function()
@@ -1836,7 +1899,10 @@ task.spawn(function()
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
+	if alvoKillAuraPlayer == plr then
+		alvoKillAuraPlayer = nil
+	end
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Recuperacao pos-queda e cadencia do Kill Aura atualizadas!")
+print("[The VOID Painel] Kill Aura sincronizado por Heartbeat com trava persistente em alvo caido (knockdown)!")
