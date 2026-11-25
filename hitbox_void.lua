@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local StatsService = game:GetService("Stats")
+local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
@@ -90,6 +91,7 @@ local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
 local hudStatsVisivel = HUD_STATS_PADRAO_VISIVEL
 local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
 local speedCFrameValor = SPEED_CFRAME_PADRAO
+local boostFpsRedeAtivo = false
 local alvoAtual = nil
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
@@ -109,6 +111,7 @@ local yawAntesPulso = nil
 local yawAplicadoNoPulso = nil
 local ultimaPosicaoMorte = nil
 local morteRegistradaNestaVida = false
+local snapshotGraficoSalvo = nil
 
 local btnKillAuraUI
 
@@ -133,6 +136,93 @@ local function setKillAuraEstado(novoEstado)
 	end
 	atualizarKillAuraUI(killAuraAtivo)
 	print("[The VOID Painel] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
+end
+
+-- ==========================================
+-- OTIMIZACAO DE FPS E LIMPEZA VISUAL / REDE LEVE
+-- ==========================================
+local function aplicarOtimizacaoFpsERede(ativar)
+	boostFpsRedeAtivo = ativar
+
+	if ativar then
+		if not snapshotGraficoSalvo then
+			snapshotGraficoSalvo = {
+				GlobalShadows = Lighting.GlobalShadows,
+				Technology = pcall(function() return Lighting.Technology end) and Lighting.Technology or nil,
+				SavedQuality = nil
+			}
+		end
+
+		pcall(function()
+			Lighting.GlobalShadows = false
+			Lighting.EnvironmentSpecularScale = 0
+			Lighting.EnvironmentDiffuseScale = 0
+			for _, obj in ipairs(Lighting:GetChildren()) do
+				if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Clouds") then
+					obj.Enabled = false
+				end
+			end
+		end)
+
+		pcall(function()
+			if settings and settings().Rendering then
+				settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+			end
+		end)
+
+		pcall(function()
+			local ws = workspace
+			if ws.Terrain then
+				ws.Terrain.Decoration = false
+				ws.Terrain.WaterWaveSize = 0
+				ws.Terrain.WaterWaveSpeed = 0
+				ws.Terrain.WaterReflectance = 0
+				ws.Terrain.WaterTransparency = 1
+			end
+			for _, desc in ipairs(ws:GetDescendants()) do
+				if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Smoke") or desc:IsA("Sparkles") then
+					desc.Enabled = false
+				elseif desc:IsA("Trail") or desc:IsA("Beam") then
+					desc.Enabled = false
+				elseif desc:IsA("Decal") or desc:IsA("Texture") then
+					desc.Transparency = math.max(desc.Transparency, 0.85)
+				elseif desc:IsA("BasePart") then
+					desc.CastShadow = false
+				end
+			end
+		end)
+
+		-- Tentativa leve no cliente (ping real ainda depende da rota/servidor)
+		pcall(function()
+			if setfpscap then
+				setfpscap(60)
+			end
+		end)
+		pcall(function()
+			if collectgarbage then
+				collectgarbage("collect")
+			end
+		end)
+
+		print("[The VOID Painel] Otimizacao FPS/Visual aplicada (ping depende da rota/servidor).")
+	else
+		if snapshotGraficoSalvo then
+			pcall(function()
+				Lighting.GlobalShadows = snapshotGraficoSalvo.GlobalShadows
+				for _, obj in ipairs(Lighting:GetChildren()) do
+					if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Clouds") then
+						obj.Enabled = true
+					end
+				end
+			end)
+			pcall(function()
+				if settings and settings().Rendering then
+					settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+				end
+			end)
+		end
+		print("[The VOID Painel] Otimizacao FPS/Visual desligada.")
+	end
 end
 
 local function getGuiParent()
@@ -1360,22 +1450,32 @@ local function criarPainelHitbox()
 	dicaVisual.Parent = pagVisual
 
 	local pagConfig = abasPaginas.Config
+	local btnOtimizar = criarBotaoPadrao(
+		pagConfig,
+		boostFpsRedeAtivo and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF",
+		UDim2.new(0, 8, 0, 4),
+		UDim2.new(1, -16, 0, 25),
+		10
+	)
+	btnOtimizar.BackgroundColor3 = boostFpsRedeAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+
 	local btnResetPos = criarBotaoPadrao(
 		pagConfig,
 		"Resetar Posicao",
-		UDim2.new(0, 8, 0, 4),
+		UDim2.new(0, 8, 0, 34),
 		UDim2.new(1, -16, 0, 25),
 		11
 	)
 
 	local infoAtalhos = Instance.new("TextLabel")
-	infoAtalhos.Size = UDim2.new(1, -16, 0, 66)
-	infoAtalhos.Position = UDim2.new(0, 8, 0, 36)
+	infoAtalhos.Size = UDim2.new(1, -16, 0, 88)
+	infoAtalhos.Position = UDim2.new(0, 8, 0, 66)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J"
+	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nOtimizar corta efeitos/sombras.\nPing depende da rota/servidor."
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
+	infoAtalhos.TextWrapped = true
 	infoAtalhos.Font = Enum.Font.GothamMedium
-	infoAtalhos.TextSize = 11
+	infoAtalhos.TextSize = 10
 	infoAtalhos.TextXAlignment = Enum.TextXAlignment.Left
 	infoAtalhos.TextYAlignment = Enum.TextYAlignment.Top
 	infoAtalhos.Parent = pagConfig
@@ -1529,6 +1629,12 @@ local function criarPainelHitbox()
 		if statsLabelUI then
 			statsLabelUI.Visible = hudStatsVisivel
 		end
+	end)
+
+	btnOtimizar.MouseButton1Click:Connect(function()
+		aplicarOtimizacaoFpsERede(not boostFpsRedeAtivo)
+		btnOtimizar.Text = boostFpsRedeAtivo and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF"
+		btnOtimizar.BackgroundColor3 = boostFpsRedeAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
 	end)
 
 	btnResetPos.MouseButton1Click:Connect(function()
@@ -1697,4 +1803,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Hitbox ate 40 e filtro de AMG reforçado!")
+print("[The VOID Painel] Botao Otimizar FPS / Rede adicionado em Config!")
