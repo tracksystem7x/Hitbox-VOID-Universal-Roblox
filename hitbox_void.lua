@@ -35,12 +35,13 @@ local DISTANCIA_COSTAS = 3.2
 local DISTANCIA_MAXIMA_COSTAS = 45
 
 local DISTANCIA_KILL_AURA = 30
-local DELAY_KILL_AURA = 0.02
+local DELAY_KILL_AURA = 0.001
+local RAJADA_KILL_AURA = 4
 local KILL_AURA_PULSO_ALVO = false
 local DURACAO_PULSO_MIRA = 0.008
 
 local ATIVAR_AUTOCLICK_JUNTO = true
-local DELAY_CLIQUE = 0.001
+local DELAY_CLIQUE = 0.0005
 
 local WALKSPEED_BASE = 16
 
@@ -114,6 +115,7 @@ local morteRegistradaNestaVida = false
 local snapshotGraficoSalvo = nil
 
 local btnKillAuraUI
+local btnAutoClickUI
 
 local function atualizarKillAuraUI(ligado)
 	if btnKillAuraUI then
@@ -124,7 +126,7 @@ end
 
 local function setKillAuraEstado(novoEstado)
 	local agora = os.clock()
-	if (agora - ultimoToggleKillAura) < 0.08 and novoEstado ~= killAuraAtivo then
+	if (agora - ultimoToggleKillAura) < 0.05 and novoEstado ~= killAuraAtivo then
 		return
 	end
 	ultimoToggleKillAura = agora
@@ -135,7 +137,6 @@ local function setKillAuraEstado(novoEstado)
 		yawAplicadoNoPulso = nil
 	end
 	atualizarKillAuraUI(killAuraAtivo)
-	print("[The VOID Painel] Kill Aura:", killAuraAtivo and "ON (Q)" or "OFF (Q)")
 end
 
 -- ==========================================
@@ -147,9 +148,7 @@ local function aplicarOtimizacaoFpsERede(ativar)
 	if ativar then
 		if not snapshotGraficoSalvo then
 			snapshotGraficoSalvo = {
-				GlobalShadows = Lighting.GlobalShadows,
-				Technology = pcall(function() return Lighting.Technology end) and Lighting.Technology or nil,
-				SavedQuality = nil
+				GlobalShadows = Lighting.GlobalShadows
 			}
 		end
 
@@ -192,7 +191,6 @@ local function aplicarOtimizacaoFpsERede(ativar)
 			end
 		end)
 
-		-- Tentativa leve no cliente (ping real ainda depende da rota/servidor)
 		pcall(function()
 			if setfpscap then
 				setfpscap(60)
@@ -203,8 +201,6 @@ local function aplicarOtimizacaoFpsERede(ativar)
 				collectgarbage("collect")
 			end
 		end)
-
-		print("[The VOID Painel] Otimizacao FPS/Visual aplicada (ping depende da rota/servidor).")
 	else
 		if snapshotGraficoSalvo then
 			pcall(function()
@@ -221,7 +217,6 @@ local function aplicarOtimizacaoFpsERede(ativar)
 				end
 			end)
 		end
-		print("[The VOID Painel] Otimizacao FPS/Visual desligada.")
 	end
 end
 
@@ -327,8 +322,6 @@ local function criarIndicadorUI()
 end
 
 criarIndicadorUI()
-
-local btnAutoClickUI
 
 local function atualizarVisual(ligado)
 	if losangoUI then
@@ -529,6 +522,44 @@ local function conectarMonitorMorte(char)
 	end
 end
 
+local function recuperarEstadoAposQueda(novoChar)
+	alvoAtual = nil
+	pulsoMiraAte = 0
+	yawAntesPulso = nil
+	yawAplicadoNoPulso = nil
+
+	-- Garante que os estados visuais e flags continuem sincronizados apos cair
+	atualizarVisual(ativo)
+	atualizarKillAuraUI(killAuraAtivo)
+
+	task.spawn(function()
+		local hum = novoChar:FindFirstChildOfClass("Humanoid") or novoChar:WaitForChild("Humanoid", 5)
+		if hum then
+			pcall(function()
+				if hum:GetState() == Enum.HumanoidStateType.Dead or hum:GetState() == Enum.HumanoidStateType.Ragdoll then
+					hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+				end
+			end)
+		end
+		-- Re-equipa a primeira Tool da mochila caso o personagem tenha derrubado/perdido ao cair
+		local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if backpack and hum then
+			task.wait(0.25)
+			local jaTemTool = novoChar:FindFirstChildOfClass("Tool")
+			if not jaTemTool then
+				for _, item in ipairs(backpack:GetChildren()) do
+					if item:IsA("Tool") then
+						pcall(function()
+							hum:EquipTool(item)
+						end)
+						break
+					end
+				end
+			end
+		end
+	end)
+end
+
 if LocalPlayer.Character then
 	conectarMonitorMorte(LocalPlayer.Character)
 end
@@ -536,6 +567,7 @@ end
 LocalPlayer.CharacterAdded:Connect(function(novoChar)
 	local destinoMorte = ultimaPosicaoMorte
 	conectarMonitorMorte(novoChar)
+	recuperarEstadoAposQueda(novoChar)
 
 	if deathTpAtivo and destinoMorte then
 		task.spawn(function()
@@ -897,9 +929,21 @@ local function executarCliqueRapido()
 	end
 end
 
+local function dispararPulsoAtaque(char)
+	if char then
+		local tool = char:FindFirstChildOfClass("Tool")
+		if tool and tool.Parent == char then
+			pcall(function()
+				tool:Activate()
+			end)
+		end
+	end
+	executarCliqueRapido()
+end
+
 local function dispararCicloKillAura()
-	local _, meuRoot = getCharAndRoot(LocalPlayer)
-	if not meuRoot then return end
+	local char, meuRoot = getCharAndRoot(LocalPlayer)
+	if not char or not meuRoot then return end
 
 	local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
 	local alvoProximo = acharMaisProximoKillAura(meuRoot, alcanceEfetivo)
@@ -927,17 +971,9 @@ local function dispararCicloKillAura()
 		end
 	end
 
-	local char = LocalPlayer.Character
-	if char then
-		local tool = char:FindFirstChildOfClass("Tool")
-		if tool then
-			pcall(function()
-				tool:Activate()
-			end)
-		end
+	for _ = 1, RAJADA_KILL_AURA do
+		dispararPulsoAtaque(char)
 	end
-
-	executarCliqueRapido()
 end
 
 local function restaurarPulsoMiraKillAura()
@@ -1661,7 +1697,7 @@ task.spawn(function()
 			end
 			task.wait(DELAY_KILL_AURA)
 		else
-			task.wait(0.06)
+			task.wait(0.03)
 		end
 	end
 end)
@@ -1680,7 +1716,7 @@ task.spawn(function()
 			end
 			task.wait(DELAY_CLIQUE)
 		else
-			task.wait(0.06)
+			task.wait(0.03)
 		end
 	end
 end)
@@ -1803,4 +1839,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Botao Otimizar FPS / Rede adicionado em Config!")
+print("[The VOID Painel] Recuperacao pos-queda e cadencia do Kill Aura atualizadas!")
