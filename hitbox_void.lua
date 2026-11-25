@@ -72,7 +72,8 @@ local JUMP_MULT_MAX = 5
 
 local HITBOX_PADRAO_ATIVO = false
 local HITBOX_TAMANHO_PADRAO = 12
-local HITBOX_MAX_SLIDER = 40
+local HITBOX_MIN_SLIDER = 3
+local HITBOX_MAX_SLIDER = 27
 local HITBOX_VISIVEL_PADRAO = true
 local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
 local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
@@ -117,7 +118,7 @@ local ultimoDisparoAutoClickTick = 0
 
 local hitboxAtivo = HITBOX_PADRAO_ATIVO
 local hitboxVisivel = HITBOX_VISIVEL_PADRAO
-local hitboxSize = HITBOX_TAMANHO_PADRAO
+local hitboxSize = math.clamp(HITBOX_TAMANHO_PADRAO, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
 
 local amgTexto = ""
 local focusTexto = ""
@@ -174,11 +175,11 @@ local function atualizarKillAuraUI(ligado)
 	end
 	if kaBadgeUI then
 		kaBadgeUI.Text = ligado and "KILL AURA: ON" or "KILL AURA: OFF"
-		kaBadgeUI.TextColor3 = ligado and Color3.fromRGB(95, 255, 145) or Color3.fromRGB(255, 95, 95)
-		kaBadgeUI.BackgroundColor3 = ligado and Color3.fromRGB(22, 52, 34) or Color3.fromRGB(48, 22, 26)
+		kaBadgeUI.TextColor3 = ligado and Color3.fromRGB(130, 255, 175) or Color3.fromRGB(255, 130, 130)
+		kaBadgeUI.BackgroundColor3 = ligado and Color3.fromRGB(11, 46, 24) or Color3.fromRGB(56, 13, 18)
 	end
 	if kaStrokeUI then
-		kaStrokeUI.Color = ligado and Color3.fromRGB(85, 245, 135) or Color3.fromRGB(235, 75, 75)
+		kaStrokeUI.Color = ligado and Color3.fromRGB(110, 255, 160) or Color3.fromRGB(255, 105, 105)
 	end
 end
 
@@ -327,7 +328,7 @@ local function criarIndicadorUI()
 
 	local holder = Instance.new("Frame")
 	holder.Name = "DiamondHolder"
-	holder.Size = UDim2.new(0, 196, 0, 62)
+	holder.Size = UDim2.new(0, 232, 0, 68)
 	holder.Position = UDim2.new(0, 14, 0, 66)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui
@@ -335,7 +336,7 @@ local function criarIndicadorUI()
 	local losango = Instance.new("Frame")
 	losango.Name = "DiamondShape"
 	losango.Size = UDim2.new(0, 22, 0, 22)
-	losango.Position = UDim2.new(0, 17, 0, 17)
+	losango.Position = UDim2.new(0, 17, 0, 19)
 	losango.AnchorPoint = Vector2.new(0.5, 0.5)
 	losango.Rotation = 45
 	losango.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
@@ -350,41 +351,42 @@ local function criarIndicadorUI()
 
 	local textoEstado = Instance.new("TextLabel")
 	textoEstado.Name = "StatusLabel"
-	textoEstado.Size = UDim2.new(0, 40, 0, 22)
-	textoEstado.Position = UDim2.new(0, 35, 0, 17)
+	textoEstado.Size = UDim2.new(0, 38, 0, 24)
+	textoEstado.Position = UDim2.new(0, 35, 0, 19)
 	textoEstado.AnchorPoint = Vector2.new(0, 0.5)
 	textoEstado.BackgroundTransparency = 1
 	textoEstado.Text = "OFF"
 	textoEstado.TextColor3 = Color3.fromRGB(235, 65, 65)
-	textoEstado.TextStrokeTransparency = 0.2
-	textoEstado.Font = Enum.Font.GothamBold
+	textoEstado.TextStrokeTransparency = 0.1
+	textoEstado.Font = Enum.Font.GothamBlack
 	textoEstado.TextSize = 13
 	textoEstado.TextXAlignment = Enum.TextXAlignment.Left
 	textoEstado.Parent = holder
 
 	local kaBadge = Instance.new("TextLabel")
 	kaBadge.Name = "KillAuraBadge"
-	kaBadge.Size = UDim2.new(0, 108, 0, 24)
-	kaBadge.Position = UDim2.new(0, 74, 0, 17)
+	kaBadge.Size = UDim2.new(0, 142, 0, 30)
+	kaBadge.Position = UDim2.new(0, 74, 0, 19)
 	kaBadge.AnchorPoint = Vector2.new(0, 0.5)
-	kaBadge.BackgroundColor3 = Color3.fromRGB(48, 22, 26)
-	kaBadge.BackgroundTransparency = 0.05
+	kaBadge.BackgroundColor3 = Color3.fromRGB(56, 13, 18)
+	kaBadge.BackgroundTransparency = 0
 	kaBadge.Text = "KILL AURA: OFF"
-	kaBadge.TextColor3 = Color3.fromRGB(255, 95, 95)
-	kaBadge.TextStrokeTransparency = 0.15
-	kaBadge.Font = Enum.Font.GothamBlack
-	kaBadge.TextSize = 11
+	kaBadge.TextColor3 = Color3.fromRGB(255, 130, 130)
+	kaBadge.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	kaBadge.TextStrokeTransparency = 0
+	kaBadge.Font = Enum.Font.FredokaOne
+	kaBadge.TextSize = 15
 	kaBadge.Parent = holder
-	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 5)
+	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 6)
 	local kaStroke = Instance.new("UIStroke")
-	kaStroke.Color = Color3.fromRGB(235, 75, 75)
-	kaStroke.Thickness = 1.5
+	kaStroke.Color = Color3.fromRGB(255, 105, 105)
+	kaStroke.Thickness = 2
 	kaStroke.Parent = kaBadge
 
 	local statsLabel = Instance.new("TextLabel")
 	statsLabel.Name = "FpsPingLabel"
 	statsLabel.Size = UDim2.new(1, 0, 0, 18)
-	statsLabel.Position = UDim2.new(0, 4, 0, 36)
+	statsLabel.Position = UDim2.new(0, 4, 0, 40)
 	statsLabel.BackgroundTransparency = 1
 	statsLabel.Text = "FPS: -- | -- MS"
 	statsLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
@@ -948,20 +950,16 @@ local function distanciaEfetivaAlvo(meuPos, rootAlvo)
 end
 
 local function obterAlcanceEfetivoMaximo()
-	local raioHitboxUtil = hitboxAtivo and math.min(hitboxSize + 4, ALCANCE_MAXIMO_REAL_JOGO) or DISTANCIA_MAXIMA
+	local raioHitboxUtil = hitboxAtivo and math.min(hitboxSize, ALCANCE_MAXIMO_REAL_JOGO) or DISTANCIA_MAXIMA
 	return math.min(math.max(DISTANCIA_MAXIMA, raioHitboxUtil), ALCANCE_MAXIMO_REAL_JOGO)
 end
 
--- ==========================================
--- TRAVA FIRME NO ALVO ATUAL (NAO TROCA QUANDO OUTRO ENTRA NO RAIO)
--- ==========================================
 local function obterOuManterAlvoTravado(meuRoot, raioBase, raioPersistencia)
 	if not meuRoot then
 		alvoTravadoPlayer = nil
 		return nil, nil
 	end
 
-	-- 1) Se ja temos um alvo travado, mantemos ele estritamente enquanto estiver vivo, valido e dentro da persistencia
 	if alvoTravadoPlayer and jogadorElegivelComoAlvo(alvoTravadoPlayer) then
 		local _, rootTravado, humTravado = getCharAndRoot(alvoTravadoPlayer)
 		if rootTravado and humTravado and humTravado.Health > 0 then
@@ -972,7 +970,6 @@ local function obterOuManterAlvoTravado(meuRoot, raioBase, raioPersistencia)
 		end
 	end
 
-	-- 2) Alvo anterior morreu, saiu do alcance ou ficou invalido: limpa e busca o proximo valido mais proximo
 	alvoTravadoPlayer = nil
 	local melhorRoot = nil
 	local melhorPlr = nil
@@ -1161,6 +1158,9 @@ local function restaurarPulsoMiraKillAura()
 	yawAplicadoNoPulso = nil
 end
 
+-- ==========================================
+-- HITBOX SEM TRAVAR FISICA DOS JOGADORES (LIMITE MAXIMO 27)
+-- ==========================================
 local function restaurarRoot(part)
 	local saved = originaisRoot[part]
 	if saved and part and part.Parent then
@@ -1219,8 +1219,9 @@ end
 
 local function sincronizarHitboxEMarcadores()
 	local rootsAtivos = {}
+	local tamanhoEfetivo = math.clamp(hitboxSize, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
 	local transpAlvo = hitboxVisivel and HITBOX_TRANSPARENCIA_VISIVEL or 1
-	local assinaturaAlvo = string.format("%d|%.4f", hitboxSize, transpAlvo)
+	local assinaturaAlvo = string.format("%d|%.4f", tamanhoEfetivo, transpAlvo)
 
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
@@ -1257,12 +1258,12 @@ local function sincronizarHitboxEMarcadores()
 							Massless = root.Massless
 						}
 					end
-					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
+					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or math.abs(root.Size.X - tamanhoEfetivo) > 0.01 then
 						ultimoEstadoAplicado[root] = assinaturaAlvo
 						pcall(function()
 							root.CanCollide = false
 							root.Massless = true
-							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+							root.Size = Vector3.new(tamanhoEfetivo, tamanhoEfetivo, tamanhoEfetivo)
 							root.Color = COR_HITBOX_AURA
 							root.Transparency = transpAlvo
 						end)
@@ -1572,8 +1573,8 @@ local function criarPainelHitbox()
 	)
 	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
 
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 190, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
-		hitboxSize = novoSize
+	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 190, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
+		hitboxSize = math.clamp(novoSize, HITBOX_MIN_SLIDER, HITBOX_MAX_SLIDER)
 		sincronizarHitboxEMarcadores()
 	end)
 
@@ -1715,7 +1716,7 @@ local function criarPainelHitbox()
 	infoAtalhos.Size = UDim2.new(1, -16, 0, 88)
 	infoAtalhos.Position = UDim2.new(0, 8, 0, 66)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nTrava firme no alvo em combate.\nNao troca quando outro entra no raio."
+	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nHitbox limite maximo: 27.\nTrava firme no alvo em combate."
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
 	infoAtalhos.TextWrapped = true
 	infoAtalhos.Font = Enum.Font.GothamMedium
@@ -2036,4 +2037,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Trava firme no alvo em combate, cache de filtros e otimizacao de desempenho aplicados!")
+print("[The VOID Painel] Indicador nítido, limite 27 no Hitbox e movimentação dos players liberada!")
