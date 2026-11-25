@@ -71,12 +71,12 @@ local JUMP_MULT_MIN = 1
 local JUMP_MULT_MAX = 5
 
 local HITBOX_PADRAO_ATIVO = false
-local HITBOX_TAMANHO_PADRAO = 12
+local HITBOX_TAMANHO_PADRAO = 27
 local HITBOX_MIN_SLIDER = 3
 local HITBOX_MAX_SLIDER = 27
 local HITBOX_VISIVEL_PADRAO = true
-local HITBOX_TRANSPARENCIA_VISIVEL = 0.82
-local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
+local HITBOX_TRANSPARENCIA_VISIVEL = 0.975
+local COR_HITBOX_AURA = Color3.fromRGB(165, 55, 75)
 
 -- Tema Roxo Nexus
 local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
@@ -941,11 +941,10 @@ local function normalizarAngulo(ang)
 	return ang
 end
 
+-- Distancia real completa (360 graus: frente, costas e lados, sem encurtar alcance)
 local function distanciaEfetivaAlvo(meuPos, rootAlvo)
 	local distCentro = (rootAlvo.Position - meuPos).Magnitude
-	local raioParte = math.max(rootAlvo.Size.X, rootAlvo.Size.Z) * 0.5
-	local distBorda = math.max(0.1, distCentro - math.min(raioParte, 6))
-	return distBorda, distCentro
+	return math.max(0.1, distCentro)
 end
 
 local function obterAlcanceEfetivoMaximo()
@@ -1064,6 +1063,7 @@ local function dispararPulsoAtaque(char)
 	executarCliqueRapido()
 end
 
+-- Kill Aura 360 graus (frente, costas e lados) com alcance real completo de 27 studs
 local function processarKillAuraFrame(agora)
 	if not killAuraAtivo then return false end
 	if UserInputService:GetFocusedTextBox() then return false end
@@ -1077,7 +1077,7 @@ local function processarKillAuraFrame(agora)
 		return false
 	end
 
-	local alcanceEfetivo = math.min(DISTANCIA_KILL_AURA, ALCANCE_MAXIMO_REAL_JOGO)
+	local alcanceEfetivo = math.max(DISTANCIA_KILL_AURA, obterAlcanceEfetivoMaximo())
 	local alvoProximo = obterOuManterAlvoTravado(meuRoot, alcanceEfetivo, alcanceEfetivo + MARGEM_PERSISTENCIA_TRAVA)
 	if not alvoProximo then
 		pulsoMiraAte = 0
@@ -1087,23 +1087,6 @@ local function processarKillAuraFrame(agora)
 	end
 
 	ultimoDisparoKillAuraTick = agora
-
-	if KILL_AURA_PULSO_ALVO then
-		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
-		if yawAntesPulso == nil then
-			yawAntesPulso = yawAtual
-		end
-		local dx = alvoProximo.Position.X - meuRoot.Position.X
-		local dz = alvoProximo.Position.Z - meuRoot.Position.Z
-		if (dx * dx + dz * dz) > 0.0025 then
-			local yawAlvo = math.atan2(-dx, -dz)
-			yawAplicadoNoPulso = yawAlvo
-			pcall(function()
-				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
-			end)
-			pulsoMiraAte = agora + DURACAO_PULSO_MIRA
-		end
-	end
 
 	for _ = 1, RAJADA_KILL_AURA do
 		dispararPulsoAtaque(char)
@@ -1158,7 +1141,7 @@ local function restaurarPulsoMiraKillAura()
 end
 
 -- ==========================================
--- HITBOX VISUAL NAO-BLOQUEANTE (NAO TRAVA FISICA DOS PLAYERS)
+-- HITBOX VISUAL QUASE INVISIVEL + SEM TRAVAR PLAYERS (MAX 27)
 -- ==========================================
 local function removerCaixaHitboxPlayer(plr)
 	local box = caixasHitboxVisual[plr]
@@ -1182,10 +1165,10 @@ local function garantirCaixaHitboxPlayer(plr, root)
 	adorneeBox.Name = "VoidHitboxAdornment"
 	adorneeBox.Adornee = root
 	adorneeBox.AlwaysOnTop = false
-	adorneeBox.ZIndex = 1
+	adorneeBox.ZIndex = 0
 	adorneeBox.Color3 = COR_HITBOX_AURA
-	adorneeBox.Transparency = 1
-	adorneeBox.Size = Vector3.new(4, 4, 4)
+	adorneeBox.Transparency = HITBOX_TRANSPARENCIA_VISIVEL
+	adorneeBox.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 	adorneeBox.Visible = false
 	adorneeBox.Parent = parentGui
 	caixasHitboxVisual[plr] = adorneeBox
@@ -1719,7 +1702,7 @@ local function criarPainelHitbox()
 	infoAtalhos.Size = UDim2.new(1, -16, 0, 88)
 	infoAtalhos.Position = UDim2.new(0, 8, 0, 66)
 	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nHitbox limite maximo: 27.\nTrava firme no alvo em combate."
+	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q (360°)\nPainel: J\nAlcance real completo: 27.\nTrava firme no alvo em combate."
 	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
 	infoAtalhos.TextWrapped = true
 	infoAtalhos.Font = Enum.Font.GothamMedium
@@ -2029,7 +2012,7 @@ end)
 task.spawn(function()
 	while true do
 		pcall(sincronizarHitboxEMarcadores)
-		task.wait(0.35)
+		task.wait(0.25)
 	end
 end)
 
@@ -2041,4 +2024,4 @@ Players.PlayerRemoving:Connect(function(plr)
 	limparMarcador(plr)
 end)
 
-print("[The VOID Painel] Hitbox sem travar players, limite 27 e foco travado aplicados!")
+print("[The VOID Painel] Hitbox discreto, alcance 27 real, Kill Aura 360° e players livres!")
