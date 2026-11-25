@@ -1272,9 +1272,6 @@ local function restaurarRoot(part)
 			part.Size = saved.Size
 			part.Transparency = saved.Transparency
 			part.CanCollide = saved.CanCollide
-			if saved.Massless ~= nil then
-				part.Massless = saved.Massless
-			end
 		end)
 	end
 	originaisRoot[part] = nil
@@ -1356,19 +1353,16 @@ local function sincronizarHitboxEMarcadores()
 				if deveExpandir then
 					rootsAtivos[root] = true
 					if not originaisRoot[root] then
-						local okMass, curMass = pcall(function() return root.Massless end)
 						originaisRoot[root] = {
 							Size = root.Size,
 							Transparency = root.Transparency,
-							CanCollide = root.CanCollide,
-							Massless = okMass and curMass or nil
+							CanCollide = root.CanCollide
 						}
 					end
 					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
 						ultimoEstadoAplicado[root] = assinaturaAlvo
 						pcall(function()
 							root.CanCollide = false
-							root.Massless = true
 							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 							root.Color = COR_HITBOX_AURA
 							root.Transparency = transpAlvo
