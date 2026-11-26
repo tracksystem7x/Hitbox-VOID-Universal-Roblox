@@ -1,214 +1,341 @@
 if getgenv and getgenv().UniversalTargetLockLoaded then
 	getgenv().UniversalTargetLockActive = not getgenv().UniversalTargetLockActive
-	if getgenv().SetTargetLockUI then
-		getgenv().SetTargetLockUI(getgenv().UniversalTargetLockActive)
-	end
+	if getgenv().SetTargetLockUI then getgenv().SetTargetLockUI(getgenv().UniversalTargetLockActive) end
 	warn("[The VOID Painel] Alternado para:", getgenv().UniversalTargetLockActive and "ON" or "OFF")
 	return
 end
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local StatsService = game:GetService("Stats")
 local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
-
 local LocalPlayer = Players.LocalPlayer
 
--- ==========================================
--- CONFIGURACAO GERAL
--- ==========================================
-local TECLA_ATALHO = Enum.KeyCode.E
-local TECLA_KILL_AURA = Enum.KeyCode.Q
-local TECLA_PAINEL = Enum.KeyCode.J
-local TECLA_ESPECIAL = Enum.KeyCode.G
-local JANELA_ESPECIAL_SEG = 1.2
+local GrabRemote = (function()
+	local ok, rem = pcall(function()
+		local pkgs = ReplicatedStorage:WaitForChild("Packages", 5)
+		local knit = pkgs and pkgs:WaitForChild("Knit", 5)
+		local svcs = knit and knit:WaitForChild("Services", 5)
+		local combat = svcs and svcs:WaitForChild("CombatService", 5)
+		local rf = combat and combat:WaitForChild("RF", 5)
+		return rf and rf:WaitForChild("Grab", 5)
+	end)
+	return ok and rem or nil
+end)()
 
-local DISTANCIA_MAXIMA = 22
-local MARGEM_TROCA = 3.5
-local FIRMEZA_GIRO = 1.0
-local ORBITAR = false
+local EH_HIGHSCHOOL_RP = (game.PlaceId == 112333343527957) or (game.GameId == 10394064134)
+if not EH_HIGHSCHOOL_RP then
+	local okInfo, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
+	if okInfo and info and info.Name then
+		local low = string.lower(info.Name)
+		if string.find(low, "highschool experience", 1, true) or string.find(low, "high school experience", 1, true) then
+			EH_HIGHSCHOOL_RP = true
+		end
+	end
+end
 
-local DISTANCIA_COSTAS = 3.2
-local DISTANCIA_MAXIMA_COSTAS = 45
+local CFG = {
+	KEY_ATALHO = Enum.KeyCode.E,
+	KEY_KA = Enum.KeyCode.Q,
+	KEY_PAINEL = Enum.KeyCode.J,
+	KEY_ESPECIAL = Enum.KeyCode.G,
+	KEY_CANCEL_PVP = Enum.KeyCode.R,
+	JANELA_ESP = 1.2,
+	DIST_MAX = EH_HIGHSCHOOL_RP and 20 or 22,
+	DIST_GRAB_ASSIST = 70.0,
+	GRAB_PUXAR_DIST = 28.0,
+	GRAB_JANELA_ALIGN = 0.22,
+	ExtendedRange = 5000,
+	GrabsPerFrame = 10,
+	ParallelThreads = 4,
+	MARGEM_TROCA = 3.5,
+	FIRMEZA_GIRO = 1.0,
+	ORBITAR = false,
+	DIST_COSTAS = 3.2,
+	DIST_MAX_COSTAS = 45,
+	DIST_KA = EH_HIGHSCHOOL_RP and 28 or 32,
+	MARGEM_KA = 8,
+	DELAY_KA_NORM = 0.008,
+	RAJADA_KA_NORM = 3,
+	DELAY_CLK_NORM = 0.0001,
+	DELAY_KA_INV = 0.02,
+	RAJADA_KA_INV = 4,
+	DELAY_CLK_INV = 0.02,
+	KA_PULSO = false,
+	DUR_PULSO = 0.008,
+	AUTOCLICK_JUNTO = true,
+	WS_BASE = 16,
+	JP_BASE = 50,
+	JP_FATOR = 0.08,
+	INV_PROF = 4.18,
+	COR_PISO = Color3.fromRGB(196, 154, 108),
+	SPEED_MIN = 1,
+	SPEED_MAX = 200,
+	MODOS_SPEED = { "CFrame", "WalkSpeed", "AssemblyVel", "Hybrid (CF+WS)" },
+	JUMP_MIN = 1,
+	JUMP_MAX = 1000,
+	HIT_DEF = 12,
+	HIT_MAX = 27,
+	HIT_TRANS = 0.965,
+	COR_HIT = Color3.fromRGB(220, 55, 55),
 
-local DISTANCIA_KILL_AURA = 30
-local MARGEM_PERSISTENCIA_KILL_AURA = 6
-local DELAY_KILL_AURA = 0.001
-local RAJADA_KILL_AURA = 5
-local KILL_AURA_PULSO_ALVO = false
-local DURACAO_PULSO_MIRA = 0.008
+	-- TEMA ROXO NEXUS & PRETO EQUILIBRADO
+	ROXO = Color3.fromRGB(132, 62, 214),
+	ROXO_NEXUS = Color3.fromRGB(145, 72, 232),
+	ROXO_SUAVE = Color3.fromRGB(218, 192, 248),
+	CINZA = Color3.fromRGB(25, 25, 34),
+	FUNDO_PAINEL = Color3.fromRGB(11, 11, 16),
+	FUNDO_CARD = Color3.fromRGB(18, 18, 26),
+	FUNDO_TOPO = Color3.fromRGB(19, 15, 28),
+	ROXO_ON = Color3.fromRGB(126, 52, 218),
 
-local ATIVAR_AUTOCLICK_JUNTO = true
-local DELAY_CLIQUE = 0.001
-
-local WALKSPEED_BASE = 16
-local JUMPPOWER_BASE = 50
-local JUMP_FATOR_SUAVE = 0.08
-
-local TARGET_LOCK_PADRAO_HABILITADO = true
-local BACK_COSTAS_PADRAO_ATIVO = false
-local ANTI_RAGDOLL_PADRAO_ATIVO = false
-local ANTI_GRAB_RAG_PADRAO_ATIVO = false
-local DEATH_TP_PADRAO_ATIVO = false
-local NO_SLOW_PADRAO_ATIVO = false
-local KILL_AURA_PADRAO_ATIVO = false
-local NO_ANIMATION_PADRAO_ATIVO = false
-local HUD_LOSANGO_PADRAO_VISIVEL = true
-local HUD_STATS_PADRAO_VISIVEL = true
-local SPEED_CFRAME_PADRAO_ATIVO = false
-local SPEED_CFRAME_PADRAO = 1
-local SPEED_CFRAME_MIN = 1
-local SPEED_CFRAME_MAX = 200
-
-local MODOS_SPEED = { "CFrame", "WalkSpeed", "AssemblyVel", "Hybrid (CF+WS)" }
-local SPEED_MODO_PADRAO_IDX = 1
-
-local JUMP_MULTI_PADRAO_ATIVO = false
-local JUMP_MULTI_PADRAO = 1
-local JUMP_MULTI_MIN = 1
-local JUMP_MULTI_MAX = 1000
-
-local HITBOX_PADRAO_ATIVO = false
-local HITBOX_TAMANHO_PADRAO = 12
-local HITBOX_MAX_SLIDER = 27
-local HITBOX_VISIVEL_PADRAO = true
-local HITBOX_TRANSPARENCIA_VISIVEL = 0.965
-local COR_HITBOX_AURA = Color3.fromRGB(220, 55, 55)
-
--- Tema Roxo Nexus
-local ROXO_NEXUS = Color3.fromRGB(155, 65, 255)
-local BOTAO_CINZA = Color3.fromRGB(42, 42, 50)
-local BOTAO_ROXO_ON = Color3.fromRGB(145, 50, 250)
-local POSICAO_PAINEL_PADRAO = UDim2.new(1, -214, 1, -486)
--- ==========================================
+	PAINEL_W = 354,
+	PAINEL_H = 626,
+	POS_PAINEL = UDim2.new(1, -372, 1, -640),
+	ESP_MAX_DIST = 350,
+}
 
 if getgenv then
 	getgenv().UniversalTargetLockLoaded = true
 	getgenv().UniversalTargetLockActive = false
 end
 
-local ativo = false
-local targetLockHabilitadoNoPainel = TARGET_LOCK_PADRAO_HABILITADO
-local backCostasAtivo = BACK_COSTAS_PADRAO_ATIVO
-local antiRagdollAtivo = ANTI_RAGDOLL_PADRAO_ATIVO
-local antiGrabRagAtivo = ANTI_GRAB_RAG_PADRAO_ATIVO
-local deathTpAtivo = DEATH_TP_PADRAO_ATIVO
-local noSlowAtivo = NO_SLOW_PADRAO_ATIVO
-local killAuraAtivo = KILL_AURA_PADRAO_ATIVO
-local noAnimationAtivo = NO_ANIMATION_PADRAO_ATIVO
-local hudLosangoVisivel = HUD_LOSANGO_PADRAO_VISIVEL
-local hudStatsVisivel = HUD_STATS_PADRAO_VISIVEL
-local speedCFrameAtivo = SPEED_CFRAME_PADRAO_ATIVO
-local speedCFrameValor = SPEED_CFRAME_PADRAO
-local speedModoIdx = SPEED_MODO_PADRAO_IDX
-local walkSpeedOriginalSalvo = nil
-local jumpMultiAtivo = JUMP_MULTI_PADRAO_ATIVO
-local jumpMultiValor = JUMP_MULTI_PADRAO
-local jumpPowerOriginalSalvo = nil
-local boostFpsRedeAtivo = false
+local S = {
+	ativo = false,
+	lockOn = true,
+	pvpLoop = false,
+	backCostas = false,
+	grabAssist = true,
+	spamGrab = false,
+	grabDist = math.clamp(math.floor((CFG.DIST_GRAB_ASSIST or 70) + 0.5), 1, 100),
+	grabPullDist = math.clamp(math.floor((CFG.GRAB_PUXAR_DIST or 28) + 0.5), 1, 100),
+	antiRag = EH_HIGHSCHOOL_RP and true or false,
+	antiGrab = EH_HIGHSCHOOL_RP and true or false,
+	deathTp = false,
+	noSlow = false,
+	ka = false,
+	fighting = false,
+	noAnim = false,
+	inv = false,
+	posInv = nil,
+	yawInv = 0,
+	ancCam = nil,
+	cacheParts = {},
+	cacheChar = nil,
+	hudLosango = true,
+	hudStats = true,
+	speedOn = false,
+	speedVal = 1,
+	speedIdx = 1,
+	wsOrig = nil,
+	jumpOn = false,
+	jumpVal = 1,
+	jpOrig = nil,
+	boostFps = false,
+	alvo = nil,
+	alvoPvp = nil,
+	alvoKa = nil,
+	tKa = 0,
+	tClk = 0,
+	tScan = 0,
+	cacheAlvos = {},
+	tJanelaHit = 0,
+	tJanelaGrab = 0,
+	alvoGrabTravado = nil,
+	tSyncCombat = 0,
+	hitOn = false,
+	hitVis = true,
+	hitSize = CFG.HIT_DEF,
+	amg = "",
+	focus = "",
+	backFilt = "",
+	tEsp = 0,
+	tEspSize = 0,
+	espOn = false,
+	espName = true,
+	espHp = true,
+	espBody = true,
+}
 
-local alvoAtual = nil
-local alvoKillAuraPlayer = nil
-local ultimoDisparoKillAuraTick = 0
-local ultimoDisparoAutoClickTick = 0
+local snapInv = { transp = {}, partTransp = {}, size = {}, cm = {}, acc = {}, dec = {}, mesh = {}, roupa = {} }
+local origRoot, ultEstRoot, marcPlr, animConns, espObjs = {}, {}, {}, {}, {}
+local tEsp, tToggleKa, pulsoAte, yawAntes, yawPulso, posMorte, mortaVida, snapGraf, ignHit = 0, 0, 0, nil, nil, nil, false, nil, false
+local spamToken = 0
+local spamFrameConn = nil
+local UI = {}
 
-local hitboxAtivo = HITBOX_PADRAO_ATIVO
-local hitboxVisivel = HITBOX_VISIVEL_PADRAO
-local hitboxSize = HITBOX_TAMANHO_PADRAO
-local amgTexto = ""
-local focusTexto = ""
-local backFilterTexto = ""
+local parentGui = (function()
+	local ok, res = pcall(function()
+		local t = Instance.new("ScreenGui")
+		t.Name = "LockGuiTest"
+		t.Parent = CoreGui
+		t:Destroy()
+		return CoreGui
+	end)
+	if ok and res then return res end
+	return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
+end)()
 
-local originaisRoot = {}
-local ultimoEstadoAplicado = {}
-local marcadoresJogadores = {}
-local animConexoes = {}
-local ultimoEspecialTick = 0
-local ultimoToggleKillAura = 0
-local pulsoMiraAte = 0
-local yawAntesPulso = nil
-local yawAplicadoNoPulso = nil
-local ultimaPosicaoMorte = nil
-local morteRegistradaNestaVida = false
-local snapshotGraficoSalvo = nil
-
-local btnKillAuraUI
-local btnAutoClickUI
-local killAuraHudFrameUI
-local killAuraHudDotUI
-local killAuraHudLabelUI
-local killAuraHudStrokeUI
-
-local function obterModoSpeedAtual()
-	return MODOS_SPEED[speedModoIdx] or "CFrame"
-end
-
-local function atualizarKillAuraUI(ligado)
-	if btnKillAuraUI then
-		btnKillAuraUI.Text = ligado and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF"
-		btnKillAuraUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
-	end
-	if killAuraHudDotUI then
-		killAuraHudDotUI.BackgroundColor3 = ligado and Color3.fromRGB(35, 215, 100) or Color3.fromRGB(225, 50, 50)
-	end
-	if killAuraHudLabelUI then
-		killAuraHudLabelUI.Text = ligado and "KILL AURA: ON" or "KILL AURA: OFF"
-		killAuraHudLabelUI.TextColor3 = ligado and Color3.fromRGB(95, 245, 140) or Color3.fromRGB(245, 85, 85)
-	end
-	if killAuraHudStrokeUI then
-		killAuraHudStrokeUI.Color = ligado and Color3.fromRGB(70, 225, 120) or ROXO_NEXUS
-	end
-end
-
-local function setKillAuraEstado(novoEstado)
-	local agora = os.clock()
-	if (agora - ultimoToggleKillAura) < 0.05 and novoEstado ~= killAuraAtivo then
-		return
-	end
-	ultimoToggleKillAura = agora
-	killAuraAtivo = novoEstado
-	if not killAuraAtivo then
-		alvoKillAuraPlayer = nil
-		pulsoMiraAte = 0
-		yawAntesPulso = nil
-		yawAplicadoNoPulso = nil
-	end
-	atualizarKillAuraUI(killAuraAtivo)
-end
-
--- ==========================================
--- OTIMIZACAO DE FPS E LIMPEZA VISUAL / REDE LEVE
--- ==========================================
-local function aplicarOtimizacaoFpsERede(ativar)
-	boostFpsRedeAtivo = ativar
-
-	if ativar then
-		if not snapshotGraficoSalvo then
-			snapshotGraficoSalvo = {
-				GlobalShadows = Lighting.GlobalShadows
-			}
+local function resetarPersonagem()
+	local ch = LocalPlayer.Character
+	if not ch then return end
+	local hum = ch:FindFirstChildOfClass("Humanoid")
+	pcall(function()
+		if hum then
+			hum.Health = 0
+			hum:ChangeState(Enum.HumanoidStateType.Dead)
 		end
+		ch:BreakJoints()
+	end)
+end
 
+local function updInvUI(on)
+	if UI.btnInv then
+		UI.btnInv.Text = on and "Invisível: ON" or "Invisível: OFF"
+		UI.btnInv.BackgroundColor3 = on and CFG.ROXO_ON or CFG.CINZA
+	end
+end
+
+local function updKaUI(on)
+	if UI.btnKa then
+		UI.btnKa.Text = on and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF"
+		UI.btnKa.BackgroundColor3 = on and CFG.ROXO_ON or CFG.CINZA
+	end
+	if UI.kaDot then UI.kaDot.BackgroundColor3 = on and Color3.fromRGB(35, 215, 100) or Color3.fromRGB(225, 50, 50) end
+	if UI.kaLbl then
+		UI.kaLbl.Text = on and "KILL AURA: ON" or "KILL AURA: OFF"
+		UI.kaLbl.TextColor3 = on and Color3.fromRGB(95, 245, 140) or Color3.fromRGB(245, 85, 85)
+	end
+	if UI.kaStr then UI.kaStr.Color = on and Color3.fromRGB(70, 225, 120) or CFG.ROXO end
+end
+
+local function setKa(on)
+	local now = os.clock()
+	if (now - tToggleKa) < 0.05 and on ~= S.ka then return end
+	tToggleKa = now
+	S.ka = not not on
+	if not S.ka then
+		S.alvoKa, pulsoAte, yawAntes, yawPulso = nil, 0, nil, nil
+	end
+	updKaUI(S.ka)
+end
+
+local PAL_FIGHT = { "fight", "pvp", "combat", "incombat", "battle", "brawl", "arena", "court", "quadra", "zone", "ragdoll", "safe" }
+local function nomeFight(n)
+	if not n or n == "" then return false end
+	local low = string.lower(n)
+	for _, p in ipairs(PAL_FIGHT) do
+		if string.find(low, p, 1, true) then return true end
+	end
+	return false
+end
+
+local function libCombate(char, hum)
+	if hum then
+		pcall(function()
+			if hum.Sit then hum.Sit = false end
+			if hum.PlatformStand then hum.PlatformStand = false end
+			if not S.inv then
+				local st = hum:GetState()
+				if st == Enum.HumanoidStateType.Ragdoll or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Physics then
+					hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+				end
+			end
+		end)
+	end
+	if char then
+		for _, item in ipairs(char:GetChildren()) do
+			if item:IsA("Tool") and not item.Enabled then
+				pcall(function() item.Enabled = true end)
+			end
+		end
+	end
+end
+
+local function updFightUI()
+	if UI.btnFight then
+		UI.btnFight.Text = S.fighting and "Combate: ON" or "Combate: OFF"
+		UI.btnFight.BackgroundColor3 = S.fighting and CFG.ROXO_ON or CFG.CINZA
+	end
+end
+
+local function setFighting(on)
+	S.fighting = not not on
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+	local function aj(c)
+		if not c then return end
+		for _, d in ipairs(c:GetDescendants()) do
+			local ln = string.lower(d.Name or "")
+			if d:IsA("BoolValue") and nomeFight(d.Name) then
+				pcall(function()
+					if string.find(ln, "safe", 1, true) then
+						d.Value = not S.fighting
+					else
+						d.Value = S.fighting
+					end
+				end)
+			elseif d:IsA("StringValue") and nomeFight(d.Name) then
+				pcall(function() d.Value = S.fighting and "Fighting" or "" end)
+			elseif (d:IsA("NumberValue") or d:IsA("IntValue")) and nomeFight(d.Name) and not string.find(ln, "safe", 1, true) then
+				pcall(function() d.Value = S.fighting and 1 or 0 end)
+			end
+		end
+	end
+
+	pcall(function()
+		LocalPlayer:SetAttribute("Fighting", S.fighting)
+		LocalPlayer:SetAttribute("InCombat", S.fighting)
+		LocalPlayer:SetAttribute("Combat", S.fighting)
+		if char then
+			char:SetAttribute("Fighting", S.fighting)
+			char:SetAttribute("InCombat", S.fighting)
+			char:SetAttribute("Combat", S.fighting)
+		end
+	end)
+
+	aj(LocalPlayer)
+	aj(char)
+	libCombate(char, hum)
+
+	if not S.fighting and hum then
+		pcall(function()
+			hum.WalkSpeed = math.max(hum.WalkSpeed, CFG.WS_BASE)
+			hum.PlatformStand = false
+			hum.Sit = false
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end)
+	end
+
+	updFightUI()
+end
+
+local function syncCombate(now)
+	local t = now or os.clock()
+	if (t - S.tSyncCombat) < 0.35 then return end
+	S.tSyncCombat = t
+	local char = LocalPlayer.Character
+	libCombate(char, char and char:FindFirstChildOfClass("Humanoid"))
+end
+
+local function setOptFps(on)
+	S.boostFps = not not on
+	if S.boostFps then
+		if not snapGraf then snapGraf = { GlobalShadows = Lighting.GlobalShadows } end
 		pcall(function()
 			Lighting.GlobalShadows = false
 			Lighting.EnvironmentSpecularScale = 0
 			Lighting.EnvironmentDiffuseScale = 0
-			for _, obj in ipairs(Lighting:GetChildren()) do
-				if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Clouds") then
-					obj.Enabled = false
-				end
+			for _, o in ipairs(Lighting:GetChildren()) do
+				if o:IsA("PostEffect") or o:IsA("Atmosphere") or o:IsA("Clouds") then o.Enabled = false end
 			end
 		end)
-
-		pcall(function()
-			if settings and settings().Rendering then
-				settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-			end
-		end)
-
+		pcall(function() if settings and settings().Rendering then settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end end)
 		pcall(function()
 			local ws = workspace
 			if ws.Terrain then
@@ -218,427 +345,514 @@ local function aplicarOtimizacaoFpsERede(ativar)
 				ws.Terrain.WaterReflectance = 0
 				ws.Terrain.WaterTransparency = 1
 			end
-			for _, desc in ipairs(ws:GetDescendants()) do
-				if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Smoke") or desc:IsA("Sparkles") then
-					desc.Enabled = false
-				elseif desc:IsA("Trail") or desc:IsA("Beam") then
-					desc.Enabled = false
-				elseif desc:IsA("Decal") or desc:IsA("Texture") then
-					desc.Transparency = math.max(desc.Transparency, 0.85)
-				elseif desc:IsA("BasePart") then
-					desc.CastShadow = false
+			for _, d in ipairs(ws:GetDescendants()) do
+				if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sparkles") or d:IsA("Trail") or d:IsA("Beam") then
+					d.Enabled = false
+				elseif d:IsA("Decal") or d:IsA("Texture") then
+					d.Transparency = math.max(d.Transparency, 0.85)
+				elseif d:IsA("BasePart") then
+					d.CastShadow = false
 				end
 			end
 		end)
-
+		pcall(function() if setfpscap then setfpscap(60) end end)
+		pcall(function() if collectgarbage then collectgarbage("collect") end end)
+	elseif snapGraf then
 		pcall(function()
-			if setfpscap then
-				setfpscap(60)
+			Lighting.GlobalShadows = snapGraf.GlobalShadows
+			for _, o in ipairs(Lighting:GetChildren()) do
+				if o:IsA("PostEffect") or o:IsA("Atmosphere") or o:IsA("Clouds") then o.Enabled = true end
 			end
 		end)
-		pcall(function()
-			if collectgarbage then
-				collectgarbage("collect")
-			end
-		end)
-	else
-		if snapshotGraficoSalvo then
-			pcall(function()
-				Lighting.GlobalShadows = snapshotGraficoSalvo.GlobalShadows
-				for _, obj in ipairs(Lighting:GetChildren()) do
-					if obj:IsA("PostEffect") or obj:IsA("Atmosphere") or obj:IsA("Clouds") then
-						obj.Enabled = true
-					end
-				end
-			end)
-			pcall(function()
-				if settings and settings().Rendering then
-					settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
-				end
-			end)
-		end
+		pcall(function() if settings and settings().Rendering then settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end end)
 	end
 end
 
-local function getGuiParent()
-	local ok, res = pcall(function()
-		local test = Instance.new("ScreenGui")
-		test.Name = "LockGuiTest"
-		test.Parent = CoreGui
-		test:Destroy()
-		return CoreGui
-	end)
-	if ok and res then return res end
-	return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
-end
-
-local parentGui = getGuiParent()
-
-local losangoGuiRoot, losangoUI, statusUI, statsLabelUI
-
-local function lerPingMs()
-	local ok, pingVal = pcall(function()
+local function lerPing()
+	local ok, v = pcall(function()
 		local net = StatsService and StatsService:FindFirstChild("Network")
 		local item = net and net:FindFirstChild("ServerStatsItem")
-		local pingItem = item and item:FindFirstChild("Data Ping")
-		if pingItem and typeof(pingItem.GetValue) == "function" then
-			return pingItem:GetValue()
-		end
+		local p = item and item:FindFirstChild("Data Ping")
+		if p and typeof(p.GetValue) == "function" then return p:GetValue() end
 		return nil
 	end)
-	if ok and typeof(pingVal) == "number" and pingVal >= 0 then
-		return math.floor(pingVal + 0.5)
-	end
+	if ok and typeof(v) == "number" and v >= 0 then return math.floor(v + 0.5) end
 	return nil
 end
 
-local function criarIndicadorUI()
+local function criarHud()
 	if not parentGui then return end
-	local antiga = parentGui:FindFirstChild("UniversalLockDiamondHUD")
-	if antiga then antiga:Destroy() end
-
+	local ant = parentGui:FindFirstChild("UniversalLockDiamondHUD")
+	if ant then ant:Destroy() end
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "UniversalLockDiamondHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.Enabled = hudLosangoVisivel
+	gui.Enabled = S.hudLosango
 	gui.Parent = parentGui
 
 	local holder = Instance.new("Frame")
-	holder.Name = "DiamondHolder"
-	holder.Size = UDim2.new(0, 118, 0, 54)
+	holder.Size = UDim2.new(0, 126, 0, 56)
 	holder.Position = UDim2.new(0, 14, 0, 66)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui
 
-	local losango = Instance.new("Frame")
-	losango.Name = "DiamondShape"
-	losango.Size = UDim2.new(0, 22, 0, 22)
-	losango.Position = UDim2.new(0, 17, 0, 17)
-	losango.AnchorPoint = Vector2.new(0.5, 0.5)
-	losango.Rotation = 45
-	losango.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
-	losango.BorderSizePixel = 0
-	losango.Parent = holder
+	local los = Instance.new("Frame")
+	los.Size = UDim2.new(0, 22, 0, 22)
+	los.Position = UDim2.new(0, 17, 0, 17)
+	los.AnchorPoint = Vector2.new(0.5, 0.5)
+	los.Rotation = 45
+	los.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
+	los.BorderSizePixel = 0
+	los.Parent = holder
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.fromRGB(255, 255, 255)
+	st.Thickness = 1.5
+	st.Transparency = 0.25
+	st.Parent = los
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(255, 255, 255)
-	stroke.Thickness = 1.5
-	stroke.Transparency = 0.25
-	stroke.Parent = losango
+	local lblSt = Instance.new("TextLabel")
+	lblSt.Size = UDim2.new(0, 64, 0, 22)
+	lblSt.Position = UDim2.new(0, 36, 0, 17)
+	lblSt.AnchorPoint = Vector2.new(0, 0.5)
+	lblSt.BackgroundTransparency = 1
+	lblSt.Text = "OFF"
+	lblSt.TextColor3 = Color3.fromRGB(235, 65, 65)
+	lblSt.TextStrokeTransparency = 0.2
+	lblSt.Font = Enum.Font.GothamBold
+	lblSt.TextSize = 13
+	lblSt.TextXAlignment = Enum.TextXAlignment.Left
+	lblSt.Parent = holder
 
-	local textoEstado = Instance.new("TextLabel")
-	textoEstado.Name = "StatusLabel"
-	textoEstado.Size = UDim2.new(0, 56, 0, 22)
-	textoEstado.Position = UDim2.new(0, 36, 0, 17)
-	textoEstado.AnchorPoint = Vector2.new(0, 0.5)
-	textoEstado.BackgroundTransparency = 1
-	textoEstado.Text = "OFF"
-	textoEstado.TextColor3 = Color3.fromRGB(235, 65, 65)
-	textoEstado.TextStrokeTransparency = 0.2
-	textoEstado.Font = Enum.Font.GothamBold
-	textoEstado.TextSize = 13
-	textoEstado.TextXAlignment = Enum.TextXAlignment.Left
-	textoEstado.Parent = holder
+	local stats = Instance.new("TextLabel")
+	stats.Size = UDim2.new(1, 0, 0, 18)
+	stats.Position = UDim2.new(0, 4, 0, 35)
+	stats.BackgroundTransparency = 1
+	stats.Text = "FPS: -- | -- MS"
+	stats.TextColor3 = Color3.fromRGB(235, 235, 245)
+	stats.TextStrokeTransparency = 0.25
+	stats.Font = Enum.Font.GothamBold
+	stats.TextSize = 11
+	stats.TextXAlignment = Enum.TextXAlignment.Left
+	stats.Visible = S.hudStats
+	stats.Parent = holder
 
-	local statsLabel = Instance.new("TextLabel")
-	statsLabel.Name = "FpsPingLabel"
-	statsLabel.Size = UDim2.new(1, 0, 0, 18)
-	statsLabel.Position = UDim2.new(0, 4, 0, 34)
-	statsLabel.BackgroundTransparency = 1
-	statsLabel.Text = "FPS: -- | -- MS"
-	statsLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
-	statsLabel.TextStrokeTransparency = 0.25
-	statsLabel.Font = Enum.Font.GothamBold
-	statsLabel.TextSize = 11
-	statsLabel.TextXAlignment = Enum.TextXAlignment.Left
-	statsLabel.Visible = hudStatsVisivel
-	statsLabel.Parent = holder
+	local badge = Instance.new("Frame")
+	badge.Size = UDim2.new(0, 134, 0, 25)
+	badge.Position = UDim2.new(0, 14, 0, 126)
+	badge.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
+	badge.BackgroundTransparency = 0.12
+	badge.BorderSizePixel = 0
+	badge.Parent = gui
+	Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 6)
+	local kaStr = Instance.new("UIStroke")
+	kaStr.Color = CFG.ROXO
+	kaStr.Thickness = 1.4
+	kaStr.Parent = badge
 
-	local kaBadge = Instance.new("Frame")
-	kaBadge.Name = "KillAuraIndicatorBadge"
-	kaBadge.Size = UDim2.new(0, 126, 0, 24)
-	kaBadge.Position = UDim2.new(0, 14, 0, 124)
-	kaBadge.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-	kaBadge.BackgroundTransparency = 0.12
-	kaBadge.BorderSizePixel = 0
-	kaBadge.Parent = gui
-	Instance.new("UICorner", kaBadge).CornerRadius = UDim.new(0, 5)
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 10, 0, 10)
+	dot.Position = UDim2.new(0, 12, 0.5, 0)
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.BackgroundColor3 = Color3.fromRGB(225, 50, 50)
+	dot.BorderSizePixel = 0
+	dot.Parent = badge
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-	local kaStroke = Instance.new("UIStroke")
-	kaStroke.Color = ROXO_NEXUS
-	kaStroke.Thickness = 1.4
-	kaStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	kaStroke.Parent = kaBadge
+	local kaLbl = Instance.new("TextLabel")
+	kaLbl.Size = UDim2.new(1, -26, 1, 0)
+	kaLbl.Position = UDim2.new(0, 24, 0, 0)
+	kaLbl.BackgroundTransparency = 1
+	kaLbl.Text = "KILL AURA: OFF"
+	kaLbl.TextColor3 = Color3.fromRGB(245, 85, 85)
+	kaLbl.TextStrokeTransparency = 0.15
+	kaLbl.Font = Enum.Font.GothamBlack
+	kaLbl.TextSize = 11
+	kaLbl.TextXAlignment = Enum.TextXAlignment.Left
+	kaLbl.Parent = badge
 
-	local kaDot = Instance.new("Frame")
-	kaDot.Name = "KillAuraDot"
-	kaDot.Size = UDim2.new(0, 10, 0, 10)
-	kaDot.Position = UDim2.new(0, 11, 0.5, 0)
-	kaDot.AnchorPoint = Vector2.new(0.5, 0.5)
-	kaDot.BackgroundColor3 = Color3.fromRGB(225, 50, 50)
-	kaDot.BorderSizePixel = 0
-	kaDot.Parent = kaBadge
-	Instance.new("UICorner", kaDot).CornerRadius = UDim.new(1, 0)
-
-	local kaLabel = Instance.new("TextLabel")
-	kaLabel.Name = "KillAuraStatusText"
-	kaLabel.Size = UDim2.new(1, -24, 1, 0)
-	kaLabel.Position = UDim2.new(0, 22, 0, 0)
-	kaLabel.BackgroundTransparency = 1
-	kaLabel.Text = "KILL AURA: OFF"
-	kaLabel.TextColor3 = Color3.fromRGB(245, 85, 85)
-	kaLabel.TextStrokeTransparency = 0.15
-	kaLabel.Font = Enum.Font.GothamBlack
-	kaLabel.TextSize = 11
-	kaLabel.TextXAlignment = Enum.TextXAlignment.Left
-	kaLabel.Parent = kaBadge
-
-	losangoGuiRoot = gui
-	losangoUI = losango
-	statusUI = textoEstado
-	statsLabelUI = statsLabel
-	killAuraHudFrameUI = kaBadge
-	killAuraHudDotUI = kaDot
-	killAuraHudLabelUI = kaLabel
-	killAuraHudStrokeUI = kaStroke
-	atualizarKillAuraUI(killAuraAtivo)
+	UI.hudGui, UI.los, UI.lblSt, UI.stats, UI.kaDot, UI.kaLbl, UI.kaStr = gui, los, lblSt, stats, dot, kaLbl, kaStr
+	updKaUI(S.ka)
 end
+criarHud()
 
-criarIndicadorUI()
-
-local function atualizarVisual(ligado)
-	if losangoUI then
-		losangoUI.BackgroundColor3 = ligado and Color3.fromRGB(35, 205, 95) or Color3.fromRGB(220, 45, 45)
+local function updLockUI(on)
+	if UI.los then UI.los.BackgroundColor3 = on and Color3.fromRGB(35, 205, 95) or Color3.fromRGB(220, 45, 45) end
+	if UI.lblSt then
+		UI.lblSt.Text = on and "ON" or "OFF"
+		UI.lblSt.TextColor3 = on and Color3.fromRGB(70, 235, 120) or Color3.fromRGB(235, 65, 65)
 	end
-	if statusUI then
-		statusUI.Text = ligado and "ON" or "OFF"
-		statusUI.TextColor3 = ligado and Color3.fromRGB(70, 235, 120) or Color3.fromRGB(235, 65, 65)
-	end
-	if btnAutoClickUI then
-		btnAutoClickUI.Text = ligado and "AutoClick VOID (E): ON" or "AutoClick VOID (E): OFF"
-		btnAutoClickUI.BackgroundColor3 = ligado and BOTAO_ROXO_ON or BOTAO_CINZA
+	if UI.btnAuto then
+		UI.btnAuto.Text = on and "AutoClick VOID (E): ON" or "AutoClick VOID (E): OFF"
+		UI.btnAuto.BackgroundColor3 = on and CFG.ROXO_ON or CFG.CINZA
 	end
 end
 
-local function setEstado(novoEstado)
-	ativo = novoEstado
-	if not ativo then
-		alvoAtual = nil
-	end
-	if getgenv then
-		getgenv().UniversalTargetLockActive = ativo
-	end
-	atualizarVisual(ativo)
+local function setLock(on)
+	S.ativo = not not on
+	if not S.ativo then S.alvo = nil end
+	if getgenv then getgenv().UniversalTargetLockActive = S.ativo end
+	updLockUI(S.ativo)
 end
+if getgenv then getgenv().SetTargetLockUI = updLockUI end
+updLockUI(false)
 
-if getgenv then
-	getgenv().SetTargetLockUI = atualizarVisual
-end
+local NOMES_MOV = { "idle", "walk", "run", "jump", "fall", "swim", "climb", "land", "freefall", "running", "walking" }
+local PAL_ACAO = { "punch", "hit", "attack", "atk", "combat", "fight", "combo", "grab", "catch", "special", "ult", "skill", "ability", "g_", "kick", "slap" }
 
-atualizarVisual(false)
-
--- ==========================================
--- NO ANIMATION (PACOTE PADRAO + SEM SOCO / SEM ESPECIAL G)
--- ==========================================
-local NOMES_MOVIMENTO_PADRAO = {
-	"idle", "walk", "run", "jump", "fall", "swim", "climb", "land", "freefall", "running", "walking"
-}
-
-local PALAVRAS_ACAO_SOCO_G = {
-	"punch", "hit", "attack", "atk", "combat", "fight", "combo",
-	"grab", "catch", "special", "ult", "skill", "ability", "g_", "kick", "slap"
-}
-
-local function contemPalavra(texto, lista)
-	if not texto or texto == "" then return false end
-	local low = string.lower(texto)
-	for _, p in ipairs(lista) do
-		if string.find(low, p, 1, true) then
-			return true
-		end
+local function temPal(txt, list)
+	if not txt or txt == "" then return false end
+	local low = string.lower(txt)
+	for _, p in ipairs(list) do
+		if string.find(low, p, 1, true) then return true end
 	end
 	return false
 end
 
-local function ehAnimacaoMovimentoPadrao(track)
-	if not track then return false end
+local function ehMov(tr)
+	if not tr then return false end
+	local okP, pr = pcall(function() return tr.Priority end)
+	if okP and pr and (pr == Enum.AnimationPriority.Core or pr == Enum.AnimationPriority.Idle or pr == Enum.AnimationPriority.Movement) then
+		local nt = string.lower(tr.Name or "")
+		local na = (tr.Animation and string.lower(tr.Animation.Name or "")) or ""
+		if not temPal(nt, PAL_ACAO) and not temPal(na, PAL_ACAO) then return true end
+	end
+	local nt, na = tr.Name or "", (tr.Animation and tr.Animation.Name) or ""
+	return (temPal(nt, NOMES_MOV) or temPal(na, NOMES_MOV)) and not temPal(nt, PAL_ACAO) and not temPal(na, PAL_ACAO)
+end
 
-	local okPrio, prio = pcall(function() return track.Priority end)
-	if okPrio and prio then
-		if prio == Enum.AnimationPriority.Core or prio == Enum.AnimationPriority.Idle or prio == Enum.AnimationPriority.Movement then
-			local nomeTrack = string.lower(track.Name or "")
-			local nomeAnim = (track.Animation and string.lower(track.Animation.Name or "")) or ""
-			if not contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) and not contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
-				return true
+local function cortarTrack(tr)
+	if not S.noAnim or not tr or ehMov(tr) then return end
+	local nt, na = tr.Name or "", (tr.Animation and tr.Animation.Name) or ""
+	local okP, pr = pcall(function() return tr.Priority end)
+	local ehAct = okP and pr and (pr == Enum.AnimationPriority.Action or pr == Enum.AnimationPriority.Action2 or pr == Enum.AnimationPriority.Action3 or pr == Enum.AnimationPriority.Action4)
+	if temPal(nt, PAL_ACAO) or temPal(na, PAL_ACAO) or ehAct or ((os.clock() - tEsp) <= CFG.JANELA_ESP) then
+		pcall(function() tr:Stop(0); tr:AdjustWeight(0, 0) end)
+	end
+end
+
+local function limpAnim()
+	for _, c in ipairs(animConns) do pcall(function() c:Disconnect() end) end
+	table.clear(animConns)
+end
+
+local function checHumAnim(h)
+	if not h then return end
+	local an = h:FindFirstChildOfClass("Animator")
+	if an then for _, tr in ipairs(an:GetPlayingAnimationTracks()) do cortarTrack(tr) end end
+	for _, tr in ipairs(h:GetPlayingAnimationTracks()) do cortarTrack(tr) end
+end
+
+local function syncNoAnim()
+	local ch = LocalPlayer.Character
+	if not ch then return end
+	local anim = ch:FindFirstChild("Animate")
+	if anim and anim:IsA("LocalScript") and anim.Disabled then pcall(function() anim.Disabled = false end) end
+	limpAnim()
+	local h = ch:FindFirstChildOfClass("Humanoid")
+	if S.noAnim then checHumAnim(h) end
+	if h then
+		local an = h:FindFirstChildOfClass("Animator")
+		if an then table.insert(animConns, an.AnimationPlayed:Connect(cortarTrack)) end
+		table.insert(animConns, h.AnimationPlayed:Connect(cortarTrack))
+	end
+end
+
+local function setNoAnim(on)
+	S.noAnim = not not on
+	if UI.btnNoAnim then
+		UI.btnNoAnim.Text = S.noAnim and "No Animation: ON" or "No Animation: OFF"
+		UI.btnNoAnim.BackgroundColor3 = S.noAnim and CFG.ROXO_ON or CFG.CINZA
+	end
+	syncNoAnim()
+end
+
+local function getPartsCache(ch)
+	if not ch then return {} end
+	if S.cacheChar == ch and #S.cacheParts > 0 then return S.cacheParts end
+	S.cacheChar = ch
+	table.clear(S.cacheParts)
+	for _, d in ipairs(ch:GetDescendants()) do
+		if d:IsA("Accessory") or d:IsA("BasePart") or d:IsA("Decal") or d:IsA("Texture") or d:IsA("SpecialMesh") or d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") or d:IsA("CharacterMesh") then
+			table.insert(S.cacheParts, d)
+		end
+	end
+	return S.cacheParts
+end
+
+local function destAnc()
+	if S.ancCam then pcall(function() S.ancCam:Destroy() end); S.ancCam = nil end
+end
+
+local function garAnc()
+	if S.ancCam and S.ancCam.Parent then return S.ancCam end
+	destAnc()
+	local p = Instance.new("Part")
+	p.Name = "VoidInvisCamAnchor"
+	p.Size = Vector3.new(1, 1, 1)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanTouch = false
+	p.CanQuery = false
+	p.CastShadow = false
+	p.Parent = workspace
+	S.ancCam = p
+	return p
+end
+
+local function limpSnapInv()
+	for _, tb in pairs(snapInv) do table.clear(tb) end
+end
+
+local function aplFioInv(ch, on, tam)
+	if not ch then return end
+	local itens = getPartsCache(ch)
+	if on then
+		for _, d in ipairs(itens) do
+			if d.Parent then
+				if d:IsA("Accessory") then
+					if snapInv.acc[d] == nil then snapInv.acc[d] = d.Parent end
+					if d.Parent ~= nil then pcall(function() d.Parent = nil end) end
+				elseif d:IsA("BasePart") then
+					if tam then
+						if snapInv.size[d] == nil then snapInv.size[d] = d.Size end
+						local sz = (d.Name == "HumanoidRootPart") and Vector3.new(0.002, 0.001, 0.002) or Vector3.new(0.001, 0.001, 0.001)
+						if d.Size ~= sz then pcall(function() d.Size = sz end) end
+					end
+					if snapInv.transp[d] == nil then snapInv.transp[d] = d.LocalTransparencyModifier end
+					if snapInv.partTransp[d] == nil then snapInv.partTransp[d] = d.Transparency end
+					if snapInv.cm[d] == nil then snapInv.cm[d] = { Color = d.Color, Material = d.Material } end
+					if d.LocalTransparencyModifier ~= 1 or d.Transparency ~= 1 or d.CastShadow or d.CanCollide then
+						pcall(function()
+							d.Color = CFG.COR_PISO
+							d.Material = Enum.Material.SmoothPlastic
+							d.LocalTransparencyModifier = 1
+							d.Transparency = 1
+							d.CastShadow = false
+							d.CanCollide = false
+						end)
+					end
+				elseif d:IsA("SpecialMesh") then
+					if snapInv.mesh[d] == nil then snapInv.mesh[d] = d.Scale end
+					if d.Scale ~= Vector3.zero then pcall(function() d.Scale = Vector3.zero end) end
+				elseif d:IsA("Decal") or d:IsA("Texture") then
+					if snapInv.dec[d] == nil then snapInv.dec[d] = d.Transparency end
+					if d.Transparency ~= 1 then pcall(function() d.Transparency = 1 end) end
+				elseif d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") or d:IsA("CharacterMesh") then
+					if snapInv.roupa[d] == nil then snapInv.roupa[d] = d.Parent end
+					if d.Parent ~= nil then pcall(function() d.Parent = nil end) end
+				end
 			end
 		end
+	else
+		for a, pr in pairs(snapInv.acc) do if a and pr and pr.Parent then pcall(function() a.Parent = pr end) end end
+		for p, v in pairs(snapInv.transp) do if p and p.Parent then pcall(function() p.LocalTransparencyModifier = v end) end end
+		for p, v in pairs(snapInv.partTransp) do if p and p.Parent then pcall(function() p.Transparency = v end) end end
+		for p, cm in pairs(snapInv.cm) do if p and p.Parent and cm then pcall(function() p.Color = cm.Color; p.Material = cm.Material end) end end
+		for p, v in pairs(snapInv.size) do if p and p.Parent then pcall(function() p.Size = v end) end end
+		for m, v in pairs(snapInv.mesh) do if m and m.Parent then pcall(function() m.Scale = v end) end end
+		for dc, v in pairs(snapInv.dec) do if dc and dc.Parent then pcall(function() dc.Transparency = v end) end end
+		for r, pr in pairs(snapInv.roupa) do if r and pr and pr.Parent then pcall(function() r.Parent = pr end) end end
+		limpSnapInv()
 	end
+end
 
-	local nomeTrack = track.Name or ""
-	local nomeAnim = (track.Animation and track.Animation.Name) or ""
-	if contemPalavra(nomeTrack, NOMES_MOVIMENTO_PADRAO) or contemPalavra(nomeAnim, NOMES_MOVIMENTO_PADRAO) then
-		if not contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) and not contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
-			return true
+local function syncCamInv(hum, pos)
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	if S.inv and pos then
+		local anc = garAnc()
+		local cf = CFrame.new(pos.X, pos.Y + 1.5, pos.Z)
+		if anc.CFrame ~= cf then anc.CFrame = cf end
+		if cam.CameraType ~= Enum.CameraType.Custom then cam.CameraType = Enum.CameraType.Custom end
+		if cam.CameraSubject ~= anc then cam.CameraSubject = anc end
+	else
+		destAnc()
+		if cam.CameraType == Enum.CameraType.Scriptable then cam.CameraType = Enum.CameraType.Custom end
+		if hum and cam.CameraSubject ~= hum then cam.CameraSubject = hum end
+	end
+end
+
+local function getMovePlano()
+	local dir = Vector3.zero
+	local cam = workspace.CurrentCamera
+	if cam then
+		local f = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+		local r = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+		f = f.Magnitude > 0.001 and f.Unit or Vector3.new(0, 0, -1)
+		r = r.Magnitude > 0.001 and r.Unit or Vector3.new(1, 0, 0)
+		if not UserInputService:GetFocusedTextBox() then
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then dir += f end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then dir -= f end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then dir += r end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then dir -= r end
 		end
 	end
-
-	return false
+	if dir.Magnitude <= 0.01 then
+		local ch = LocalPlayer.Character
+		local h = ch and ch:FindFirstChildOfClass("Humanoid")
+		local md = h and h.MoveDirection or Vector3.zero
+		local pl = Vector3.new(md.X, 0, md.Z)
+		if pl.Magnitude > 0.01 then dir = pl.Unit end
+	end
+	return dir.Magnitude > 0.01 and dir.Unit or Vector3.zero
 end
 
-local function deveCortarTrack(track)
-	if not noAnimationAtivo or not track then return false end
-	if ehAnimacaoMovimentoPadrao(track) then
-		return false
-	end
-
-	local nomeTrack = track.Name or ""
-	local nomeAnim = (track.Animation and track.Animation.Name) or ""
-
-	if contemPalavra(nomeTrack, PALAVRAS_ACAO_SOCO_G) or contemPalavra(nomeAnim, PALAVRAS_ACAO_SOCO_G) then
-		return true
-	end
-
-	local okPrio, prio = pcall(function() return track.Priority end)
-	if okPrio and prio then
-		local ehAction = (prio == Enum.AnimationPriority.Action)
-			or (pcall(function() return prio == Enum.AnimationPriority.Action2 end) and prio == Enum.AnimationPriority.Action2)
-			or (pcall(function() return prio == Enum.AnimationPriority.Action3 end) and prio == Enum.AnimationPriority.Action3)
-			or (pcall(function() return prio == Enum.AnimationPriority.Action4 end) and prio == Enum.AnimationPriority.Action4)
-
-		if ehAction then
-			return true
-		end
-	end
-
-	if (os.clock() - ultimoEspecialTick) <= JANELA_ESPECIAL_SEG then
-		return true
-	end
-
-	return false
-end
-
-local function cortarSeAplicavel(track)
-	if deveCortarTrack(track) then
-		pcall(function()
-			track:Stop(0)
-			track:AdjustWeight(0, 0)
-		end)
-	end
-end
-
-local function limparConexoesAnim()
-	for _, conn in ipairs(animConexoes) do
-		pcall(function() conn:Disconnect() end)
-	end
-	table.clear(animConexoes)
-end
-
-local function checarTracksHumanoid(hum)
-	if not hum then return end
-	local animator = hum:FindFirstChildOfClass("Animator")
-	if animator then
-		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-			cortarSeAplicavel(track)
-		end
-	end
-	for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-		cortarSeAplicavel(track)
-	end
-end
-
-local function sincronizarNoAnimation()
-	local char = LocalPlayer.Character
-	if not char then return end
-
-	local animate = char:FindFirstChild("Animate")
-	if animate and animate:IsA("LocalScript") and animate.Disabled then
-		pcall(function() animate.Disabled = false end)
-	end
-
-	limparConexoesAnim()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if noAnimationAtivo then
-		checarTracksHumanoid(hum)
-	end
-
-	if hum then
-		local animator = hum:FindFirstChildOfClass("Animator")
-		if animator then
-			table.insert(animConexoes, animator.AnimationPlayed:Connect(function(track)
-				cortarSeAplicavel(track)
-			end))
-		end
-		table.insert(animConexoes, hum.AnimationPlayed:Connect(function(track)
-			cortarSeAplicavel(track)
-		end))
-	end
-end
-
--- ==========================================
--- DEATH TP (SALVA POSICAO DA MORTE E VOLTA AO RENASCER)
--- ==========================================
-local function registrarMorteSeNecessario(char)
-	if morteRegistradaNestaVida then return end
-	local targetChar = char or LocalPlayer.Character
-	if not targetChar then return end
-	local root = targetChar:FindFirstChild("HumanoidRootPart") or targetChar.PrimaryPart
-	if root then
-		ultimaPosicaoMorte = root.CFrame + Vector3.new(0, 3, 0)
-		morteRegistradaNestaVida = true
-	end
-end
-
-local function conectarMonitorMorte(char)
-	morteRegistradaNestaVida = false
-	if not char then return end
-
-	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
-	if hum then
-		hum.Died:Connect(function()
-			registrarMorteSeNecessario(char)
-		end)
-		hum:GetPropertyChangedSignal("Health"):Connect(function()
-			if hum.Health <= 0 then
-				registrarMorteSeNecessario(char)
-			end
-		end)
-	end
-end
-
-local function recuperarEstadoAposQueda(novoChar)
-	alvoAtual = nil
-	alvoKillAuraPlayer = nil
-	pulsoMiraAte = 0
-	yawAntesPulso = nil
-	yawAplicadoNoPulso = nil
-	walkSpeedOriginalSalvo = nil
-	jumpPowerOriginalSalvo = nil
-
-	atualizarVisual(ativo)
-	atualizarKillAuraUI(killAuraAtivo)
-
-	task.spawn(function()
-		local hum = novoChar:FindFirstChildOfClass("Humanoid") or novoChar:WaitForChild("Humanoid", 5)
+local function travarInv(ch, root, hum)
+	if not S.inv or not S.posInv or not root or not root.Parent then return end
+	local yAb = math.max(S.posInv.Y - CFG.INV_PROF, workspace.FallenPartsDestroyHeight + 25)
+	local cf = CFrame.new(S.posInv.X, yAb, S.posInv.Z) * CFrame.fromEulerAnglesYXZ(0, S.yawInv, 0) * CFrame.Angles(math.rad(90), 0, 0)
+	pcall(function()
 		if hum then
+			if hum.Sit then hum.Sit = false end
+			if hum.Jump then hum.Jump = false end
+			if hum.PlatformStand then hum.PlatformStand = false end
+		end
+		if root.Anchored then root.Anchored = false end
+		if root.CanCollide then root.CanCollide = false end
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.RotVelocity = Vector3.zero
+		root.CFrame = cf
+		if ch then
+			for _, pt in ipairs(ch:GetChildren()) do
+				if pt:IsA("BasePart") and pt ~= root then
+					if pt.CanCollide then pt.CanCollide = false end
+					pt.AssemblyLinearVelocity = Vector3.zero
+					pt.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+		end
+	end)
+end
+
+local function updInv(dt, now)
+	local ch = LocalPlayer.Character
+	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+	local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart)
+	if not S.inv then syncCamInv(hum, nil); return end
+	if not ch or not hum or hum.Health <= 0 or not root then syncCamInv(hum, nil); return end
+	if not S.posInv then
+		S.posInv = root.Position
+		local _, y, _ = root.CFrame:ToEulerAnglesYXZ()
+		S.yawInv = y
+	end
+	if dt and dt > 0 then
+		local vh = CFG.WS_BASE + (S.speedOn and math.min(24, math.max(0, S.speedVal - 1)) or 0)
+		local p = getMovePlano()
+		if p.Magnitude > 0.01 then
+			local d = p * (vh * math.clamp(dt, 0.001, 0.05))
+			S.posInv = Vector3.new(S.posInv.X + d.X, S.posInv.Y, S.posInv.Z + d.Z)
+			S.yawInv = math.atan2(-p.X, -p.Z)
+		end
+	end
+	travarInv(ch, root, hum)
+	local t = now or os.clock()
+	local aplTam = (t - S.tEspSize) >= 0.35
+	if aplTam then S.tEspSize = t end
+	aplFioInv(ch, true, aplTam)
+	syncCamInv(hum, S.posInv)
+end
+
+local function setInv(on)
+	S.inv = not not on
+	updInvUI(S.inv)
+	S.cacheChar, S.tEspSize, S.tKa, S.tClk = nil, 0, 0, 0
+	local ch = LocalPlayer.Character
+	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+	local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart)
+	if not S.inv then
+		destAnc()
+		aplFioInv(ch, false, false)
+		if root and S.posInv then
+			local cf = CFrame.new(S.posInv.X, S.posInv.Y + 1.2, S.posInv.Z) * CFrame.fromEulerAnglesYXZ(0, S.yawInv, 0)
 			pcall(function()
-				if hum:GetState() == Enum.HumanoidStateType.Dead or hum:GetState() == Enum.HumanoidStateType.Ragdoll then
-					hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+				if hum then hum.Sit = false; hum.PlatformStand = false; hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
+				root.CanCollide = true
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+				root.CFrame = cf
+			end)
+		end
+		S.posInv = nil
+		syncCamInv(hum, nil)
+	else
+		if root then
+			S.posInv = root.Position
+			local _, y, _ = root.CFrame:ToEulerAnglesYXZ()
+			S.yawInv = y
+		end
+		aplFioInv(ch, true, true)
+		updInv(0.016, os.clock())
+	end
+end
+
+local function applyExtendedRange()
+	local char = LocalPlayer.Character
+	if char then
+		for _, obj in ipairs(char:GetDescendants()) do
+			if obj:IsA("NumberValue") or obj:IsA("IntValue") then
+				local low = string.lower(obj.Name or "")
+				if string.find(low, "range", 1, true) or string.find(low, "grab", 1, true) then
+					pcall(function() obj.Value = CFG.ExtendedRange end)
+				end
+			end
+		end
+	end
+	pcall(function()
+		LocalPlayer:SetAttribute("GrabRange", CFG.ExtendedRange)
+		LocalPlayer:SetAttribute("Range", CFG.ExtendedRange)
+	end)
+end
+
+local function regMorte(ch)
+	if mortaVida then return end
+	local tc = ch or LocalPlayer.Character
+	local r = tc and (tc:FindFirstChild("HumanoidRootPart") or tc.PrimaryPart)
+	if r then
+		local b = (S.inv and S.posInv) or r.Position
+		posMorte = CFrame.new(b.X, b.Y + 3, b.Z)
+		mortaVida = true
+	end
+end
+
+local function monMorte(ch)
+	mortaVida = false
+	if not ch then return end
+	local h = ch:FindFirstChildOfClass("Humanoid") or ch:WaitForChild("Humanoid", 5)
+	if h then
+		h.Died:Connect(function() regMorte(ch) end)
+		h:GetPropertyChangedSignal("Health"):Connect(function() if h.Health <= 0 then regMorte(ch) end end)
+	end
+end
+
+local function recQueda(nc)
+	S.alvo, S.alvoPvp, S.alvoKa, S.alvoGrabTravado, S.posInv, S.cacheChar = nil, nil, nil, nil, nil, nil
+	S.tJanelaGrab = 0
+	destAnc()
+	limpSnapInv()
+	syncCamInv(nc and nc:FindFirstChildOfClass("Humanoid"), nil)
+	S.tJanelaHit, pulsoAte, yawAntes, yawPulso, S.wsOrig, S.jpOrig = 0, 0, nil, nil, nil, nil
+	updLockUI(S.ativo)
+	updKaUI(S.ka)
+	updInvUI(S.inv)
+	updFightUI()
+	task.spawn(function()
+		local h = nc:FindFirstChildOfClass("Humanoid") or nc:WaitForChild("Humanoid", 5)
+		if h then
+			pcall(function()
+				if h:GetState() == Enum.HumanoidStateType.Dead or h:GetState() == Enum.HumanoidStateType.Ragdoll then
+					h:ChangeState(Enum.HumanoidStateType.GettingUp)
 				end
 			end)
 		end
-		local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-		if backpack and hum then
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp and h then
 			task.wait(0.25)
-			local jaTemTool = novoChar:FindFirstChildOfClass("Tool")
-			if not jaTemTool then
-				for _, item in ipairs(backpack:GetChildren()) do
-					if item:IsA("Tool") then
-						pcall(function()
-							hum:EquipTool(item)
-						end)
-						break
-					end
+			if not nc:FindFirstChildOfClass("Tool") then
+				for _, it in ipairs(bp:GetChildren()) do
+					if it:IsA("Tool") then pcall(function() h:EquipTool(it) end); break end
 				end
 			end
 		end
@@ -646,1561 +860,1407 @@ local function recuperarEstadoAposQueda(novoChar)
 end
 
 if LocalPlayer.Character then
-	conectarMonitorMorte(LocalPlayer.Character)
+	monMorte(LocalPlayer.Character)
+	applyExtendedRange()
 end
-
-LocalPlayer.CharacterAdded:Connect(function(novoChar)
-	local destinoMorte = ultimaPosicaoMorte
-	conectarMonitorMorte(novoChar)
-	recuperarEstadoAposQueda(novoChar)
-
-	if deathTpAtivo and destinoMorte then
+LocalPlayer.CharacterAdded:Connect(function(nc)
+	local dest = posMorte
+	monMorte(nc)
+	recQueda(nc)
+	task.delay(1, applyExtendedRange)
+	if S.fighting then task.delay(0.3, function() if S.fighting then setFighting(true) end end) end
+	if S.deathTp and dest then
 		task.spawn(function()
-			local root = novoChar:FindFirstChild("HumanoidRootPart") or novoChar:WaitForChild("HumanoidRootPart", 5)
-			local hum = novoChar:FindFirstChildOfClass("Humanoid") or novoChar:WaitForChild("Humanoid", 5)
-			if root then
+			local r = nc:FindFirstChild("HumanoidRootPart") or nc:WaitForChild("HumanoidRootPart", 5)
+			local h = nc:FindFirstChildOfClass("Humanoid") or nc:WaitForChild("Humanoid", 5)
+			if r then
 				for _ = 1, 8 do
-					if not root or not root.Parent then break end
+					if not r or not r.Parent then break end
 					pcall(function()
-						if hum and hum.Sit then
-							hum.Sit = false
-						end
-						root.AssemblyLinearVelocity = Vector3.zero
-						root.AssemblyAngularVelocity = Vector3.zero
-						root.CFrame = destinoMorte
+						if h and h.Sit then h.Sit = false end
+						r.AssemblyLinearVelocity = Vector3.zero
+						r.AssemblyAngularVelocity = Vector3.zero
+						r.CFrame = dest
 					end)
 					task.wait(0.03)
 				end
 			end
 		end)
 	end
-
 	task.wait(0.2)
-	sincronizarNoAnimation()
+	syncNoAnim()
 end)
 
 task.spawn(function()
 	while true do
-		if noAnimationAtivo then
-			local char = LocalPlayer.Character
-			if char then
-				local animate = char:FindFirstChild("Animate")
-				if animate and animate:IsA("LocalScript") and animate.Disabled then
-					pcall(function() animate.Disabled = false end)
-				end
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				checarTracksHumanoid(hum)
-			end
+		if S.noAnim and LocalPlayer.Character then
+			local ch = LocalPlayer.Character
+			local a = ch:FindFirstChild("Animate")
+			if a and a:IsA("LocalScript") and a.Disabled then pcall(function() a.Disabled = false end) end
+			checHumAnim(ch:FindFirstChildOfClass("Humanoid"))
 		end
-		task.wait(0.15)
+		task.wait(0.4)
 	end
 end)
 
-local function getCharAndRoot(plr)
-	local char = plr and plr.Character
-	if not char then return nil, nil, nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	-- Só considera morto quando Health <= 0 (se estiver caido por 8 hits, Health > 0 continua vivo!)
-	if hum and hum.Health <= 0 then return char, nil, hum end
-	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
-	return char, root, hum
+local function getCR(plr)
+	local ch = plr and plr.Character
+	if not ch then return nil, nil, nil end
+	local h = ch:FindFirstChildOfClass("Humanoid")
+	if h and h.Health <= 0 then return ch, nil, h end
+	return ch, ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart, h
 end
 
-local function jogadorEstaCaidoKnockdown(hum)
-	if not hum or hum.Health <= 0 then return false end
-	if hum.PlatformStand then return true end
-	local ok, st = pcall(function() return hum:GetState() end)
-	if ok and (st == Enum.HumanoidStateType.Ragdoll
-		or st == Enum.HumanoidStateType.FallingDown
-		or st == Enum.HumanoidStateType.Physics) then
-		return true
-	end
-	return false
+local function caido(h)
+	if not h or h.Health <= 0 then return false end
+	if h.PlatformStand then return true end
+	local ok, st = pcall(function() return h:GetState() end)
+	return ok and (st == Enum.HumanoidStateType.Ragdoll or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Physics)
 end
 
--- ==========================================
--- NO SLOW (EVITA REDUCAO DE WALKSPEED POR GOLPE/EFEITO)
--- ==========================================
-local function aplicarNoSlow()
-	if not noSlowAtivo then return end
+local function aplNoSlow()
+	if not S.noSlow or S.inv then return end
+	local _, _, h = getCR(LocalPlayer)
+	if h then pcall(function() if h.WalkSpeed < CFG.WS_BASE then h.WalkSpeed = CFG.WS_BASE end end) end
+end
 
-	local char, _, hum = getCharAndRoot(LocalPlayer)
-	if not char or not hum then return end
-
+local function aplJump()
+	if S.inv then return end
+	local _, _, h = getCR(LocalPlayer)
+	if not h then return end
 	pcall(function()
-		if hum.WalkSpeed < WALKSPEED_BASE then
-			hum.WalkSpeed = WALKSPEED_BASE
+		if S.jumpOn then
+			if S.jpOrig == nil then S.jpOrig = (h.JumpPower and h.JumpPower > 0) and h.JumpPower or CFG.JP_BASE end
+			if not h.UseJumpPower then h.UseJumpPower = true end
+			local alvo = math.clamp(S.jpOrig * (1 + ((S.jumpVal - 1) * CFG.JP_FATOR)), S.jpOrig, S.jpOrig * 12)
+			if math.abs(h.JumpPower - alvo) > 0.05 then h.JumpPower = alvo end
+		elseif S.jpOrig ~= nil then
+			h.JumpPower = S.jpOrig
+			S.jpOrig = nil
 		end
 	end)
 end
 
--- ==========================================
--- MULTIPLICADOR DE JUMP (REGULADO E SUAVE ATE 1000)
--- ==========================================
-local function calcularJumpPowerRegulado(baseJp, valorSlider)
-	if valorSlider <= 1 then
-		return baseJp
-	end
-	local escalaSuave = 1 + ((valorSlider - 1) * JUMP_FATOR_SUAVE)
-	return math.clamp(baseJp * escalaSuave, baseJp, baseJp * 12)
+local function aplAntiRag()
+	if not S.antiRag or S.inv then return end
+	local _, r, h = getCR(LocalPlayer)
+	if not h then return end
+	pcall(function()
+		if h.PlatformStand then h.PlatformStand = false end
+		local st = h:GetState()
+		if st == Enum.HumanoidStateType.Physics or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Ragdoll then
+			h:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+		if r then r.RotVelocity = Vector3.zero end
+	end)
 end
 
-local function aplicarJumpMultiplicador()
-	local char, _, hum = getCharAndRoot(LocalPlayer)
-	if not char or not hum then return end
-
+local function aplAntiGrab()
+	if not S.antiGrab or S.inv then return end
+	local _, r, h = getCR(LocalPlayer)
+	if not h then return end
 	pcall(function()
-		if jumpMultiAtivo then
-			if jumpPowerOriginalSalvo == nil then
-				local atualJp = hum.JumpPower
-				jumpPowerOriginalSalvo = (atualJp and atualJp > 0) and atualJp or JUMPPOWER_BASE
-			end
-			if not hum.UseJumpPower then
-				hum.UseJumpPower = true
-			end
-			local jpAlvo = calcularJumpPowerRegulado(jumpPowerOriginalSalvo, jumpMultiValor)
-			if math.abs(hum.JumpPower - jpAlvo) > 0.05 then
-				hum.JumpPower = jpAlvo
-			end
-		elseif jumpPowerOriginalSalvo ~= nil then
-			hum.JumpPower = jumpPowerOriginalSalvo
-			jumpPowerOriginalSalvo = nil
+		if h.PlatformStand then h.PlatformStand = false end
+		local st = h:GetState()
+		if st == Enum.HumanoidStateType.Physics or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Ragdoll then
+			h:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+		if r then
+			r.RotVelocity = Vector3.zero
+			if r.AssemblyLinearVelocity.Magnitude > 140 then r.AssemblyLinearVelocity = Vector3.zero end
 		end
 	end)
 end
 
--- ==========================================
--- ANTI-RAGDOLL E ANTI GRAB RAG
--- ==========================================
-local function aplicarAntiRagdoll()
-	if not antiRagdollAtivo then return end
-
-	local char, root, hum = getCharAndRoot(LocalPlayer)
-	if not char or not hum then return end
-
-	pcall(function()
-		if hum.PlatformStand then
-			hum.PlatformStand = false
-		end
-
-		local estado = hum:GetState()
-		if estado == Enum.HumanoidStateType.Physics
-			or estado == Enum.HumanoidStateType.FallingDown
-			or estado == Enum.HumanoidStateType.Ragdoll then
-			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-		end
-
-		for _, desc in ipairs(char:GetDescendants()) do
-			if desc:IsA("Motor6D") and not desc.Enabled then
-				desc.Enabled = true
-			elseif desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") then
-				if desc.Name:lower():find("ragdoll") then
-					desc.Enabled = false
-				end
-			end
-		end
-
-		if root then
-			root.RotVelocity = Vector3.zero
-		end
-	end)
-end
-
-local function aplicarAntiGrabRag()
-	if not antiGrabRagAtivo then return end
-
-	local char, root, hum = getCharAndRoot(LocalPlayer)
-	if not char or not hum then return end
-
-	pcall(function()
-		if hum.PlatformStand then
-			hum.PlatformStand = false
-		end
-
-		local estado = hum:GetState()
-		if estado == Enum.HumanoidStateType.Physics
-			or estado == Enum.HumanoidStateType.FallingDown
-			or estado == Enum.HumanoidStateType.Ragdoll then
-			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-		end
-
-		for _, desc in ipairs(char:GetDescendants()) do
-			if desc:IsA("Motor6D") and not desc.Enabled then
-				desc.Enabled = true
-			elseif desc:IsA("BallSocketConstraint") or desc:IsA("HingeConstraint") or desc:IsA("WeldConstraint") then
-				local lowName = desc.Name:lower()
-				if lowName:find("ragdoll") or lowName:find("grab") or lowName:find("catch") or lowName:find("hold") then
-					desc.Enabled = false
-				end
-			elseif desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") or desc:IsA("BodyGyro") or desc:IsA("LinearVelocity") then
-				local lowName = desc.Name:lower()
-				if lowName:find("grab") or lowName:find("ragdoll") or lowName:find("throw") or lowName:find("launch") then
-					desc:Destroy()
-				end
-			end
-		end
-
-		if root then
-			root.RotVelocity = Vector3.zero
-			if root.AssemblyLinearVelocity.Magnitude > 140 then
-				root.AssemblyLinearVelocity = Vector3.zero
-			end
-		end
-	end)
-end
-
--- ==========================================
--- SPEED MULTI-MODO + CFRAME SPEED (ESCALA ORIGINAL + ANIMACAO)
--- ==========================================
-local function obterDirecaoMovimentoCFrame(hum)
-	local dir = hum and hum.MoveDirection or Vector3.zero
-	local plano = Vector3.new(dir.X, 0, dir.Z)
-	if plano.Magnitude > 0.01 then
-		return plano.Unit
-	end
-
+local function getDirCf(h)
+	local d = h and h.MoveDirection or Vector3.zero
+	local pl = Vector3.new(d.X, 0, d.Z)
+	if pl.Magnitude > 0.01 then return pl.Unit end
 	local cam = workspace.CurrentCamera
 	if not cam then return Vector3.zero end
-
-	local forward = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-	local right = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
-	if forward.Magnitude > 0.001 then forward = forward.Unit end
-	if right.Magnitude > 0.001 then right = right.Unit end
-
-	local move = Vector3.zero
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
-		move += forward
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
-		move -= forward
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
-		move += right
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
-		move -= right
-	end
-
-	if move.Magnitude > 0.01 then
-		return move.Unit
-	end
-	return Vector3.zero
+	local f = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+	local r = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+	if f.Magnitude > 0.001 then f = f.Unit end
+	if r.Magnitude > 0.001 then r = r.Unit end
+	local mv = Vector3.zero
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then mv += f end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then mv -= f end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then mv += r end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then mv -= r end
+	return mv.Magnitude > 0.01 and mv.Unit or Vector3.zero
 end
 
-local function restaurarWalkSpeedSeNecessario()
-	if walkSpeedOriginalSalvo ~= nil then
-		local _, _, hum = getCharAndRoot(LocalPlayer)
-		if hum then
-			pcall(function()
-				hum.WalkSpeed = walkSpeedOriginalSalvo
-			end)
-		end
-		walkSpeedOriginalSalvo = nil
+local function restWs()
+	if S.wsOrig ~= nil then
+		local _, _, h = getCR(LocalPlayer)
+		if h then pcall(function() h.WalkSpeed = S.wsOrig end) end
+		S.wsOrig = nil
 	end
 end
 
-local function executarPassoCFrameOriginal(meuRoot, hum, dt)
-	if hum and hum.Sit then return end
-	local dir = obterDirecaoMovimentoCFrame(hum)
-	if dir.Magnitude <= 0.01 then return end
-
-	local passo = dir * (speedCFrameValor * math.clamp(dt, 0.001, 0.05))
+local function passoCf(r, h, dt)
+	if h and h.Sit then return end
+	local d = getDirCf(h)
+	if d.Magnitude <= 0.01 then return end
 	pcall(function()
-		meuRoot.AssemblyAngularVelocity = Vector3.zero
-		meuRoot.CFrame = meuRoot.CFrame + passo
+		r.AssemblyAngularVelocity = Vector3.zero
+		r.CFrame = r.CFrame + (d * (S.speedVal * math.clamp(dt, 0.001, 0.05)))
 	end)
 end
 
-local function aplicarSpeedMultiModo(dt)
-	if not speedCFrameAtivo then
-		restaurarWalkSpeedSeNecessario()
-		return
-	end
+local function aplSpeed(dt)
+	if S.inv or not S.speedOn then restWs(); return end
 	if UserInputService:GetFocusedTextBox() then return end
-
-	local char, meuRoot, hum = getCharAndRoot(LocalPlayer)
-	if not char or not meuRoot or not hum then return end
-
-	local modo = obterModoSpeedAtual()
-
-	if modo == "CFrame" then
-		restaurarWalkSpeedSeNecessario()
-		executarPassoCFrameOriginal(meuRoot, hum, dt)
-	elseif modo == "WalkSpeed" then
+	local _, r, h = getCR(LocalPlayer)
+	if not r or not h then return end
+	local m = CFG.MODOS_SPEED[S.speedIdx] or "CFrame"
+	if m == "CFrame" then
+		restWs(); passoCf(r, h, dt)
+	elseif m == "WalkSpeed" then
 		pcall(function()
-			if walkSpeedOriginalSalvo == nil then
-				local atualWs = hum.WalkSpeed
-				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
-			end
-			local wsAlvo = math.clamp(walkSpeedOriginalSalvo + (speedCFrameValor - 1), 1, 500)
-			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
-				hum.WalkSpeed = wsAlvo
-			end
+			if S.wsOrig == nil then S.wsOrig = (h.WalkSpeed and h.WalkSpeed > 0) and h.WalkSpeed or CFG.WS_BASE end
+			local a = math.clamp(S.wsOrig + (S.speedVal - 1), 1, 500)
+			if math.abs(h.WalkSpeed - a) > 0.05 then h.WalkSpeed = a end
 		end)
-	elseif modo == "AssemblyVel" then
-		restaurarWalkSpeedSeNecessario()
-		if not (hum and hum.Sit) then
-			local dir = obterDirecaoMovimentoCFrame(hum)
-			if dir.Magnitude > 0.01 then
+	elseif m == "AssemblyVel" then
+		restWs()
+		if not (h and h.Sit) then
+			local d = getDirCf(h)
+			if d.Magnitude > 0.01 then
 				pcall(function()
-					local velHorizontal = dir * (WALKSPEED_BASE + (speedCFrameValor - 1))
-					meuRoot.AssemblyLinearVelocity = Vector3.new(velHorizontal.X, meuRoot.AssemblyLinearVelocity.Y, velHorizontal.Z)
+					local vh = d * (CFG.WS_BASE + (S.speedVal - 1))
+					r.AssemblyLinearVelocity = Vector3.new(vh.X, r.AssemblyLinearVelocity.Y, vh.Z)
 				end)
 			end
 		end
-	elseif modo == "Hybrid (CF+WS)" then
+	elseif m == "Hybrid (CF+WS)" then
 		pcall(function()
-			if walkSpeedOriginalSalvo == nil then
-				local atualWs = hum.WalkSpeed
-				walkSpeedOriginalSalvo = (atualWs and atualWs > 0) and atualWs or WALKSPEED_BASE
-			end
-			local wsAlvo = math.clamp(walkSpeedOriginalSalvo + (speedCFrameValor * 0.25), 1, 300)
-			if math.abs(hum.WalkSpeed - wsAlvo) > 0.05 then
-				hum.WalkSpeed = wsAlvo
-			end
+			if S.wsOrig == nil then S.wsOrig = (h.WalkSpeed and h.WalkSpeed > 0) and h.WalkSpeed or CFG.WS_BASE end
+			local a = math.clamp(S.wsOrig + (S.speedVal * 0.25), 1, 300)
+			if math.abs(h.WalkSpeed - a) > 0.05 then h.WalkSpeed = a end
 		end)
-		executarPassoCFrameOriginal(meuRoot, hum, dt)
+		passoCf(r, h, dt)
 	end
 end
 
-local function splitListaNomes(texto)
-	local lista = {}
-	if not texto or texto:match("^%s*$") then
-		return lista
+local function splitLista(txt)
+	local t = {}
+	if not txt or txt:match("^%s*$") then return t end
+	for tok in txt:gmatch("[^%s,;|]+") do
+		local l = tok:match("^%s*(.-)%s*$"):lower()
+		if l ~= "" then table.insert(t, l) end
 	end
-	for token in texto:gmatch("[^%s,;|]+") do
-		local limpo = token:match("^%s*(.-)%s*$"):lower()
-		if limpo ~= "" then
-			table.insert(lista, limpo)
-		end
-	end
-	return lista
+	return t
 end
 
-local function combinaComLista(plr, lista)
-	if #lista == 0 then return false end
-	local nomeUser = (plr.Name or ""):lower()
-	local nomeDisplay = (plr.DisplayName or ""):lower()
-	for _, termo in ipairs(lista) do
-		if (nomeUser ~= "" and nomeUser:find(termo, 1, true))
-			or (nomeDisplay ~= "" and nomeDisplay:find(termo, 1, true)) then
-			return true
-		end
+local function combLista(plr, list)
+	if #list == 0 then return false end
+	local nu, nd = (plr.Name or ""):lower(), (plr.DisplayName or ""):lower()
+	for _, tm in ipairs(list) do
+		if (nu ~= "" and nu:find(tm, 1, true)) or (nd ~= "" and nd:find(tm, 1, true)) then return true end
 	end
 	return false
 end
 
-local function ehAmigoAMG(plr)
-	return combinaComLista(plr, splitListaNomes(amgTexto))
+local function ehAmg(plr) return combLista(plr, splitLista(S.amg)) end
+local function temFocus() return #splitLista(S.focus) > 0 end
+local function ehFocus(plr) local lf = splitLista(S.focus); return #lf == 0 or combLista(plr, lf) end
+local function elegivel(plr) return plr and plr ~= LocalPlayer and not ehAmg(plr) and (not temFocus() or ehFocus(plr)) end
+local function elegBack(plr)
+	if not elegivel(plr) then return false end
+	local lb = splitLista(S.backFilt)
+	return #lb == 0 or combLista(plr, lb)
 end
 
-local function ehAlvoFocus(plr)
-	local listaFocus = splitListaNomes(focusTexto)
-	if #listaFocus == 0 then
-		return true
-	end
-	return combinaComLista(plr, listaFocus)
+local function normAng(a)
+	while a > math.pi do a -= math.pi * 2 end
+	while a < -math.pi do a += math.pi * 2 end
+	return a
 end
 
-local function temFiltroFocusAtivo()
-	return #splitListaNomes(focusTexto) > 0
-end
-
-local function jogadorElegivelComoAlvo(plr)
-	if not plr or plr == LocalPlayer then return false end
-	if ehAmigoAMG(plr) then return false end
-	if temFiltroFocusAtivo() and not ehAlvoFocus(plr) then return false end
-	return true
-end
-
-local function haAmigoProximoNoAlcance(meuRoot, raio)
-	if not meuRoot then return false end
+local function maisProx(mr, rMax, extra)
+	local best, md = nil, rMax
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer and ehAmigoAMG(plr) then
-			local _, r = getCharAndRoot(plr)
-			if r and (r.Position - meuRoot.Position).Magnitude <= raio then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function elegivelParaBackCostas(plr)
-	if not jogadorElegivelComoAlvo(plr) then return false end
-	local listaBack = splitListaNomes(backFilterTexto)
-	if #listaBack == 0 then
-		return true
-	end
-	return combinaComLista(plr, listaBack)
-end
-
-local function normalizarAngulo(ang)
-	while ang > math.pi do
-		ang -= math.pi * 2
-	end
-	while ang < -math.pi do
-		ang += math.pi * 2
-	end
-	return ang
-end
-
-local function acharMaisProximoGeral(meuRoot, raioMax, filtroExtra)
-	local melhorRoot = nil
-	local menorDist = raioMax
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if jogadorElegivelComoAlvo(plr) and (not filtroExtra or filtroExtra(plr)) then
-			local _, r = getCharAndRoot(plr)
+		if elegivel(plr) and (not extra or extra(plr)) then
+			local _, r = getCR(plr)
 			if r then
-				local d = (r.Position - meuRoot.Position).Magnitude
-				if d <= raioMax and d > 0.1 and d < menorDist then
-					menorDist = d
-					melhorRoot = r
-				end
+				local d = (r.Position - mr.Position).Magnitude
+				if d <= rMax and d > 0.1 and d < md then md = d; best = r end
 			end
 		end
 	end
-
-	return melhorRoot, menorDist
+	return best, md
 end
 
--- ==========================================
--- SELECAO PERSISTENTE DO KILL AURA (FOCUS ESTRITO + ZERO AMIGOS)
--- ==========================================
-local function obterAlvoKillAuraPersistente(meuRoot, raioMax)
-	if not meuRoot then return nil, nil end
+local syncHitMarc
 
-	if alvoKillAuraPlayer and alvoKillAuraPlayer.Parent == Players and jogadorElegivelComoAlvo(alvoKillAuraPlayer) then
-		local _, rootTravado, humTravado = getCharAndRoot(alvoKillAuraPlayer)
-		if rootTravado and humTravado and humTravado.Health > 0 then
-			local distTravado = (rootTravado.Position - meuRoot.Position).Magnitude
-			local limitePersistencia = raioMax + MARGEM_PERSISTENCIA_KILL_AURA
-			if distTravado <= limitePersistencia and distTravado > 0.1 then
-				return rootTravado, alvoKillAuraPlayer
-			end
-		end
-		alvoKillAuraPlayer = nil
+local function cancPvp()
+	S.alvoPvp, S.alvo, S.tJanelaHit = nil, nil, 0
+	if S.alvoKa and S.pvpLoop then S.alvoKa = nil end
+	if syncHitMarc then pcall(syncHitMarc) end
+end
+
+local function raioHitReg()
+	local r = CFG.DIST_MAX + 10
+	return S.hitOn and math.max(r, S.hitSize + 14) or r
+end
+
+local function regPvpHit()
+	if not S.pvpLoop then return nil end
+	local _, mr = getCR(LocalPlayer)
+	if not mr then return nil end
+	if S.alvoPvp and S.alvoPvp.Parent == Players and elegivel(S.alvoPvp) then
+		local _, ra, ha = getCR(S.alvoPvp)
+		if ra and ha and ha.Health > 0 then return S.alvoPvp end
+		S.alvoPvp = nil
 	end
-
-	local melhorRoot = nil
-	local melhorPlr = nil
-	local melhorPontuacao = math.huge
-
+	local rh = raioHitReg()
+	local lp = Vector3.new(mr.CFrame.LookVector.X, 0, mr.CFrame.LookVector.Z)
+	lp = lp.Magnitude > 0.001 and lp.Unit or Vector3.zero
+	local best, ms = nil, math.huge
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if jogadorElegivelComoAlvo(plr) then
-			local _, r, hum = getCharAndRoot(plr)
-			if r and hum and hum.Health > 0 then
-				local d = (r.Position - meuRoot.Position).Magnitude
-				if d <= raioMax and d > 0.1 then
-					local bonusCaido = jogadorEstaCaidoKnockdown(hum) and -12 or 0
-					local pontuacao = d + bonusCaido
-					if pontuacao < melhorPontuacao then
-						melhorPontuacao = pontuacao
-						melhorRoot = r
-						melhorPlr = plr
+		if elegivel(plr) then
+			local _, r, h = getCR(plr)
+			if r and h and h.Health > 0 then
+				local dl = r.Position - mr.Position
+				local dist = dl.Magnitude
+				if dist <= rh and dist > 0.1 then
+					local pen = 0
+					if lp.Magnitude > 0.1 then
+						local dp = Vector3.new(dl.X, 0, dl.Z)
+						if dp.Magnitude > 0.01 then
+							local dot = lp:Dot(dp.Unit)
+							if dot < 0.05 then pen = (0.05 - dot) * 14 end
+						end
 					end
+					if (dist + pen) < ms then ms = dist + pen; best = plr end
 				end
 			end
 		end
 	end
+	if best then
+		S.alvoPvp, S.tJanelaHit = best, 0
+		if syncHitMarc then pcall(syncHitMarc) end
+	end
+	return best
+end
 
-	alvoKillAuraPlayer = melhorPlr
-	return melhorRoot, melhorPlr
+local function getPvpAlvo(mr)
+	if not S.pvpLoop or not mr then S.alvoPvp = nil; return nil, nil, false end
+	if not (S.alvoPvp and S.alvoPvp.Parent == Players and elegivel(S.alvoPvp)) then S.alvoPvp = nil; return nil, nil, false end
+	local _, ra, ha = getCR(S.alvoPvp)
+	if not (ra and ha and ha.Health > 0) then
+		S.alvoPvp = nil
+		if syncHitMarc then pcall(syncHitMarc) end
+		return nil, nil, false
+	end
+	local dist = (ra.Position - mr.Position).Magnitude
+	local mEx = S.hitOn and (S.hitSize * 0.5) or 0
+	return ra, S.alvoPvp, (dist <= (raioHitReg() + mEx) and dist > 0.1)
 end
 
 -- ==========================================
--- BACK / COSTAS (COLA ATRAS DO INIMIGO OLHANDO PARA AS COSTAS DELE)
+-- GRAB ASSIST (TECLA G) + SPAM GRAB (MOTOR ROLEX INTEGRADO)
 -- ==========================================
-local function aplicarBackCostas()
-	if not backCostasAtivo then return end
-	if UserInputService:GetFocusedTextBox() then return end
+local function escolherAlvoGrab(mr, rMax, candPreferido)
+	local refPos = (S.inv and S.posInv) or mr.Position
 
-	local char, meuRoot, hum = getCharAndRoot(LocalPlayer)
-	if not char or not meuRoot then return end
-	if hum and hum.Sit then return end
-
-	local inimigoRoot = acharMaisProximoGeral(meuRoot, DISTANCIA_MAXIMA_COSTAS, elegivelParaBackCostas)
-	if not inimigoRoot then return end
-
-	local lookInimigoPlano = Vector3.new(inimigoRoot.CFrame.LookVector.X, 0, inimigoRoot.CFrame.LookVector.Z)
-	if lookInimigoPlano.Magnitude < 0.001 then
-		lookInimigoPlano = Vector3.new(0, 0, -1)
-	else
-		lookInimigoPlano = lookInimigoPlano.Unit
+	local function validarPlr(plr)
+		if not plr or plr.Parent ~= Players or not elegivel(plr) then return nil, nil end
+		local _, ra, ha = getCR(plr)
+		if not ra or not ra.Parent or not ha or ha.Health <= 0 then return nil, nil end
+		local d = (ra.Position - refPos).Magnitude
+		if d > rMax or d <= 0.05 then return nil, nil end
+		return ra, d
 	end
 
-	local posCostas = inimigoRoot.Position - (lookInimigoPlano * DISTANCIA_COSTAS)
-	local posFinal = Vector3.new(posCostas.X, meuRoot.Position.Y, posCostas.Z)
-	local destinoCFrame = CFrame.lookAt(posFinal, posFinal + lookInimigoPlano)
+	if candPreferido then
+		local ra, d = validarPlr(candPreferido)
+		if ra then return ra, candPreferido, d end
+	end
+
+	for _, cand in ipairs({ S.alvoPvp, S.alvoKa }) do
+		local ra, d = validarPlr(cand)
+		if ra then return ra, cand, d end
+	end
+	if S.alvo and S.alvo.Parent then
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr.Character and S.alvo:IsDescendantOf(plr.Character) then
+				local ra, d = validarPlr(plr)
+				if ra then return ra, plr, d end
+			end
+		end
+	end
+
+	if temFocus() then
+		local bestR, bestP, bestD = nil, nil, math.huge
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if ehFocus(plr) then
+				local ra, d = validarPlr(plr)
+				if ra and d < bestD then bestD = d; bestR = ra; bestP = plr end
+			end
+		end
+		if bestR then return bestR, bestP, bestD end
+	end
+
+	local bestR, bestP, bestD = nil, nil, math.huge
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local ra, d = validarPlr(plr)
+		if ra and d < bestD then bestD = d; bestR = ra; bestP = plr end
+	end
+	return bestR, bestP, bestD
+end
+
+local function aplGrabAssist(forcarNovoAlvo, moverPosicao)
+	if not S.grabAssist then return end
+	local ch, mr, hum = getCR(LocalPlayer)
+	if not ch or not mr then return end
+	local rMax = math.clamp(S.grabDist or CFG.DIST_GRAB_ASSIST or 70, 1, 100)
+	local cand = (not forcarNovoAlvo) and S.alvoGrabTravado or nil
+	local alvoRoot, alvoPlr, dist = escolherAlvoGrab(mr, rMax, cand)
+	if not alvoRoot or not alvoPlr then
+		if forcarNovoAlvo then S.alvoGrabTravado = nil end
+		return
+	end
+	if forcarNovoAlvo then
+		S.alvoGrabTravado = alvoPlr
+		S.tJanelaGrab = os.clock() + math.max(0.05, CFG.GRAB_JANELA_ALIGN)
+	end
+
+	local refPos = (S.inv and S.posInv) or mr.Position
+	local dx = alvoRoot.Position.X - refPos.X
+	local dz = alvoRoot.Position.Z - refPos.Z
+	local horizDist = math.sqrt(dx * dx + dz * dz)
+	if horizDist <= 0.001 then return end
+
+	local yawAlvo = math.atan2(-dx, -dz)
+	local puxar = math.clamp(S.grabPullDist or CFG.GRAB_PUXAR_DIST or 28, 1, 100)
+	local novaPos = refPos
+	if moverPosicao ~= false and dist and dist > puxar then
+		local dirX, dirZ = dx / horizDist, dz / horizDist
+		local avanco = math.min(dist - puxar, horizDist - 1.5)
+		if avanco > 0.05 then
+			novaPos = Vector3.new(refPos.X + dirX * avanco, refPos.Y, refPos.Z + dirZ * avanco)
+		end
+	end
 
 	pcall(function()
-		meuRoot.AssemblyLinearVelocity = Vector3.zero
-		meuRoot.AssemblyAngularVelocity = Vector3.zero
-		meuRoot.CFrame = destinoCFrame
+		if S.inv and S.posInv then
+			if moverPosicao ~= false then S.posInv = novaPos end
+			S.yawInv = yawAlvo
+			travarInv(ch, mr, hum)
+		else
+			mr.AssemblyAngularVelocity = Vector3.zero
+			mr.CFrame = CFrame.new(novaPos.X, mr.Position.Y, novaPos.Z) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
+		end
 	end)
 end
 
-local function obterAlcanceAutoClick()
-	local raioBase = DISTANCIA_MAXIMA
-	if hitboxAtivo then
-		local raioHitbox = hitboxSize + 6
-		if raioHitbox > raioBase then
-			raioBase = raioHitbox
-		end
+local function dispararGrabRemoto()
+	if GrabRemote then
+		pcall(function()
+			GrabRemote:InvokeServer()
+		end)
 	end
-	return raioBase
 end
 
-local function haAlvoNoAlcanceAutoClick(meuRoot)
-	if not meuRoot then return false end
-	local raioEfetivo = obterAlcanceAutoClick()
+local function stopSpamGrab()
+	S.spamGrab = false
+	spamToken += 1
+	if spamFrameConn then
+		pcall(function() spamFrameConn:Disconnect() end)
+		spamFrameConn = nil
+	end
+	if UI.btnSpamGrab then
+		UI.btnSpamGrab.Text = "Spam Grab: OFF"
+		UI.btnSpamGrab.BackgroundColor3 = CFG.CINZA
+	end
+end
 
+local function startSpamGrab()
+	if S.spamGrab then return end
+	S.spamGrab = true
+	spamToken += 1
+	local myToken = spamToken
+	applyExtendedRange()
+
+	if UI.btnSpamGrab then
+		UI.btnSpamGrab.Text = "Spam Grab: ON"
+		UI.btnSpamGrab.BackgroundColor3 = CFG.ROXO_ON
+	end
+
+	if spamFrameConn then
+		pcall(function() spamFrameConn:Disconnect() end)
+		spamFrameConn = nil
+	end
+
+	spamFrameConn = RunService.RenderStepped:Connect(function()
+		if not S.spamGrab or myToken ~= spamToken then
+			if spamFrameConn then
+				spamFrameConn:Disconnect()
+				spamFrameConn = nil
+			end
+			return
+		end
+		if UserInputService:GetFocusedTextBox() then return end
+		for _ = 1, (CFG.GrabsPerFrame or 10) do
+			task.spawn(dispararGrabRemoto)
+		end
+	end)
+
+	for _ = 1, (CFG.ParallelThreads or 4) do
+		task.spawn(function()
+			while S.spamGrab and myToken == spamToken do
+				if not UserInputService:GetFocusedTextBox() then
+					pcall(dispararGrabRemoto)
+				end
+				task.wait()
+			end
+		end)
+	end
+end
+
+local function setSpamGrab(on)
+	if on then
+		startSpamGrab()
+	else
+		stopSpamGrab()
+	end
+end
+
+local function desviarAmg(mr)
+	if not mr or S.inv or (S.ativo and S.lockOn) or UserInputService:GetFocusedTextBox() then return end
+	local lp = Vector3.new(mr.CFrame.LookVector.X, 0, mr.CFrame.LookVector.Z)
+	if lp.Magnitude < 0.001 then return end
+	lp = lp.Unit
+	local bloq = false
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if jogadorElegivelComoAlvo(plr) then
-			local _, r = getCharAndRoot(plr)
-			if r then
-				local d = (r.Position - meuRoot.Position).Magnitude
-				local margemExtraAlvo = hitboxAtivo and (hitboxSize * 0.5) or 0
-				if d <= (raioEfetivo + margemExtraAlvo) and d > 0.1 then
-					return true
+		if plr ~= LocalPlayer and ehAmg(plr) then
+			local _, ra = getCR(plr)
+			if ra then
+				local dl = Vector3.new(ra.Position.X - mr.Position.X, 0, ra.Position.Z - mr.Position.Z)
+				if dl.Magnitude > 0.1 and dl.Magnitude <= CFG.DIST_MAX and lp:Dot(dl.Unit) > 0.85 then bloq = true; break end
+			end
+		end
+	end
+	if not bloq then return end
+	local prox = maisProx(mr, CFG.DIST_MAX)
+	if not prox then return end
+	local dx, dz = prox.Position.X - mr.Position.X, prox.Position.Z - mr.Position.Z
+	if (dx * dx + dz * dz) > 0.0025 then
+		mr.CFrame = CFrame.new(mr.Position) * CFrame.fromEulerAnglesYXZ(0, math.atan2(-dx, -dz), 0)
+	end
+end
+
+local function updCacheAlvos(now, mr, rMax)
+	if (now - S.tScan) < 0.04 then return end
+	S.tScan = now
+	table.clear(S.cacheAlvos)
+	local orig = (S.inv and S.posInv) or mr.Position
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if elegivel(plr) and plr.Character then
+			local h = plr.Character:FindFirstChildOfClass("Humanoid")
+			local r = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character.PrimaryPart
+			if h and h.Health > 0 and r and r.Parent then
+				local d = (r.Position - orig).Magnitude
+				if d <= (rMax + CFG.MARGEM_KA) and d > 0.1 then
+					table.insert(S.cacheAlvos, { plr = plr, root = r, hum = h, dist = d })
 				end
 			end
 		end
 	end
+end
 
+local function getAlvoKa(mr, rMax, now)
+	if not mr then return nil, nil end
+	if S.pvpLoop then
+		local rl, pl, ok = getPvpAlvo(mr)
+		if rl and pl and ok then S.alvoKa = pl; return rl, pl end
+		S.alvoKa = nil; return nil, nil
+	end
+	updCacheAlvos(now, mr, rMax)
+	local orig = (S.inv and S.posInv) or mr.Position
+	if S.alvoKa and S.alvoKa.Parent == Players and elegivel(S.alvoKa) then
+		for _, it in ipairs(S.cacheAlvos) do
+			if it.plr == S.alvoKa and it.root and it.root.Parent and it.hum.Health > 0 then
+				local d = (it.root.Position - orig).Magnitude
+				if d <= (rMax + CFG.MARGEM_KA) and d > 0.1 then return it.root, S.alvoKa end
+			end
+		end
+		S.alvoKa = nil
+	end
+	local bestR, bestP, bestS = nil, nil, math.huge
+	for _, it in ipairs(S.cacheAlvos) do
+		local d = (it.root.Position - orig).Magnitude
+		if d <= rMax and d > 0.1 then
+			local sc = d + (caido(it.hum) and -12 or 0)
+			if sc < bestS then bestS = sc; bestR = it.root; bestP = it.plr end
+		end
+	end
+	S.alvoKa = bestP
+	return bestR, bestP
+end
+
+local function aplCostas()
+	if not S.backCostas or S.inv or UserInputService:GetFocusedTextBox() then return end
+	local _, mr, h = getCR(LocalPlayer)
+	if not mr or (h and h.Sit) then return end
+	local ir = maisProx(mr, CFG.DIST_MAX_COSTAS, elegBack)
+	if not ir then return end
+	local lk = Vector3.new(ir.CFrame.LookVector.X, 0, ir.CFrame.LookVector.Z)
+	lk = lk.Magnitude < 0.001 and Vector3.new(0, 0, -1) or lk.Unit
+	local pc = ir.Position - (lk * CFG.DIST_COSTAS)
+	local pf = Vector3.new(pc.X, mr.Position.Y, pc.Z)
+	mr.AssemblyLinearVelocity = Vector3.zero
+	mr.AssemblyAngularVelocity = Vector3.zero
+	mr.CFrame = CFrame.lookAt(pf, pf + lk)
+end
+
+local function temAlvoClk(mr)
+	if not mr then return false end
+	if S.pvpLoop then
+		local rl, _, ok = getPvpAlvo(mr)
+		return (rl ~= nil and ok)
+	end
+	local raio = CFG.DIST_MAX + (S.inv and 16 or 0)
+	if S.hitOn and (S.hitSize + 6) > raio then raio = S.hitSize + 6 end
+	local orig = (S.inv and S.posInv) or mr.Position
+	local mEx = S.hitOn and (S.hitSize * 0.5) or 0
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if elegivel(plr) then
+			local _, r = getCR(plr)
+			if r then
+				local d = (r.Position - orig).Magnitude
+				if d <= (raio + mEx) and d > 0.1 then return true end
+			end
+		end
+	end
 	return false
 end
 
-local function executarCliqueRapido()
+local function clkRapido()
+	ignHit = true
 	if typeof(mouse1click) == "function" then
-		pcall(mouse1click)
+		mouse1click()
 	else
-		pcall(function()
-			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-		end)
+		VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+		VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 	end
+	ignHit = false
 end
 
-local function dispararPulsoAtaque(char, meuRoot)
-	-- Evita atingir amigos (AMG) quando houver amigo proximo dentro da janela do golpe/grab
-	if meuRoot and haAmigoProximoNoAlcance(meuRoot, math.max(12, hitboxAtivo and (hitboxSize + 4) or 12)) then
-		return
-	end
-	if char then
-		local tool = char:FindFirstChildOfClass("Tool")
-		if tool and tool.Parent == char then
-			pcall(function()
-				tool:Activate()
-			end)
+local function pulsoAtk(ch, mr, now, atTool)
+	local h = ch and ch:FindFirstChildOfClass("Humanoid")
+	if S.inv and mr then travarInv(ch, mr, h) end
+	if not S.inv then syncCombate(now) end
+	if mr and not S.pvpLoop and not S.inv then desviarAmg(mr) end
+	if atTool and ch then
+		local tool = ch:FindFirstChildOfClass("Tool")
+		if tool and tool.Parent == ch then
+			if not tool.Enabled then tool.Enabled = true end
+			tool:Activate()
 		end
 	end
-	executarCliqueRapido()
+	clkRapido()
+	if S.inv and mr then travarInv(ch, mr, h) end
 end
 
-local function processarKillAuraFrame(agora)
-	if not killAuraAtivo then return false end
-	if UserInputService:GetFocusedTextBox() then return false end
-	if (agora - ultimoDisparoKillAuraTick) < DELAY_KILL_AURA then
-		return alvoKillAuraPlayer ~= nil
+local function procKa(now)
+	if not S.ka or UserInputService:GetFocusedTextBox() then return false end
+	local delay = S.inv and CFG.DELAY_KA_INV or CFG.DELAY_KA_NORM
+	if (now - S.tKa) < delay then
+		if S.inv then local c, r, h = getCR(LocalPlayer); if c and r then travarInv(c, r, h) end end
+		return S.alvoKa ~= nil
 	end
-
-	local char, meuRoot = getCharAndRoot(LocalPlayer)
-	if not char or not meuRoot then
-		alvoKillAuraPlayer = nil
+	local ch, mr, h = getCR(LocalPlayer)
+	if not ch or not mr then S.alvoKa = nil; return false end
+	if S.inv then travarInv(ch, mr, h) end
+	local rEf = S.hitOn and math.max(CFG.DIST_KA, S.hitSize + 6) or (CFG.DIST_KA + (S.inv and 16 or 0))
+	local alvo = getAlvoKa(mr, rEf, now)
+	if not alvo then
+		pulsoAte, yawAntes, yawPulso = 0, nil, nil
+		if S.inv then travarInv(ch, mr, h) end
 		return false
 	end
-
-	local alcanceEfetivo = hitboxAtivo and math.max(DISTANCIA_KILL_AURA, hitboxSize + 6) or DISTANCIA_KILL_AURA
-	local alvoProximo = obterAlvoKillAuraPersistente(meuRoot, alcanceEfetivo)
-	if not alvoProximo then
-		pulsoMiraAte = 0
-		yawAntesPulso = nil
-		yawAplicadoNoPulso = nil
-		return false
-	end
-
-	ultimoDisparoKillAuraTick = agora
-
-	if KILL_AURA_PULSO_ALVO then
-		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
-		if yawAntesPulso == nil then
-			yawAntesPulso = yawAtual
-		end
-		local dx = alvoProximo.Position.X - meuRoot.Position.X
-		local dz = alvoProximo.Position.Z - meuRoot.Position.Z
+	S.tKa = now
+	if CFG.KA_PULSO and not S.inv then
+		local _, ya, _ = mr.CFrame:ToEulerAnglesYXZ()
+		if yawAntes == nil then yawAntes = ya end
+		local dx, dz = alvo.Position.X - mr.Position.X, alvo.Position.Z - mr.Position.Z
 		if (dx * dx + dz * dz) > 0.0025 then
-			local yawAlvo = math.atan2(-dx, -dz)
-			yawAplicadoNoPulso = yawAlvo
-			pcall(function()
-				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAlvo, 0)
-			end)
-			pulsoMiraAte = agora + DURACAO_PULSO_MIRA
+			yawPulso = math.atan2(-dx, -dz)
+			mr.CFrame = CFrame.new(mr.Position) * CFrame.fromEulerAnglesYXZ(0, yawPulso, 0)
+			pulsoAte = now + CFG.DUR_PULSO
 		end
 	end
-
-	for _ = 1, RAJADA_KILL_AURA do
-		dispararPulsoAtaque(char, meuRoot)
-	end
-
+	local raj = S.inv and CFG.RAJADA_KA_INV or CFG.RAJADA_KA_NORM
+	for i = 1, raj do pulsoAtk(ch, mr, now, i == 1) end
+	if S.inv then travarInv(ch, mr, h) end
 	return true
 end
 
-local function processarAutoClickFrame(agora, killAuraAtacouNesteFrame)
-	if killAuraAtacouNesteFrame then return end
-
-	local estaLigado = ativo
-	if getgenv and getgenv().UniversalTargetLockActive ~= nil then
-		estaLigado = getgenv().UniversalTargetLockActive
+local function procClk(now, kaAtk)
+	if kaAtk then
+		if S.inv then local c, r, h = getCR(LocalPlayer); if c and r then travarInv(c, r, h) end end
+		return
 	end
-
-	if not estaLigado or not ATIVAR_AUTOCLICK_JUNTO then return end
-	if UserInputService:GetFocusedTextBox() then return end
-	if (agora - ultimoDisparoAutoClickTick) < DELAY_CLIQUE then return end
-
-	local char, meuRoot = getCharAndRoot(LocalPlayer)
-	if meuRoot and haAlvoNoAlcanceAutoClick(meuRoot) then
-		ultimoDisparoAutoClickTick = agora
-		dispararPulsoAtaque(char, meuRoot)
+	local on = S.ativo
+	if getgenv and getgenv().UniversalTargetLockActive ~= nil then on = getgenv().UniversalTargetLockActive end
+	if not on or not CFG.AUTOCLICK_JUNTO or UserInputService:GetFocusedTextBox() then return end
+	local delay = S.inv and CFG.DELAY_CLK_INV or CFG.DELAY_CLK_NORM
+	if (now - S.tClk) < delay then return end
+	local ch, mr, h = getCR(LocalPlayer)
+	if mr and temAlvoClk(mr) then
+		S.tClk = now
+		pulsoAtk(ch, mr, now, true)
+		if S.inv then travarInv(ch, mr, h) end
 	end
 end
 
-local function restaurarPulsoMiraKillAura()
-	if not KILL_AURA_PULSO_ALVO or yawAntesPulso == nil then return end
-	if os.clock() < pulsoMiraAte then return end
-
-	local _, meuRoot = getCharAndRoot(LocalPlayer)
-	if meuRoot and yawAplicadoNoPulso ~= nil then
-		local _, yawAgora, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
-		if math.abs(normalizarAngulo(yawAgora - yawAplicadoNoPulso)) < 0.04 then
-			pcall(function()
-				meuRoot.CFrame = CFrame.new(meuRoot.Position) * CFrame.fromEulerAnglesYXZ(0, yawAntesPulso, 0)
-			end)
+local function restPulso()
+	if not CFG.KA_PULSO or yawAntes == nil or os.clock() < pulsoAte then return end
+	local _, mr = getCR(LocalPlayer)
+	if mr and yawPulso ~= nil then
+		local _, ya, _ = mr.CFrame:ToEulerAnglesYXZ()
+		if math.abs(normAng(ya - yawPulso)) < 0.04 then
+			mr.CFrame = CFrame.new(mr.Position) * CFrame.fromEulerAnglesYXZ(0, yawAntes, 0)
 		end
 	end
-	yawAntesPulso = nil
-	yawAplicadoNoPulso = nil
+	yawAntes, yawPulso = nil, nil
 end
 
-local function restaurarRoot(part)
-	local saved = originaisRoot[part]
-	if saved and part and part.Parent then
-		pcall(function()
-			part.Size = saved.Size
-			part.Transparency = saved.Transparency
-			part.CanCollide = saved.CanCollide
-		end)
-	end
-	originaisRoot[part] = nil
-	ultimoEstadoAplicado[part] = nil
+local function restRoot(p)
+	local sv = origRoot[p]
+	if sv and p and p.Parent then pcall(function() p.Size = sv.Size; p.Transparency = sv.Transparency; p.CanCollide = sv.CanCollide end) end
+	origRoot[p], ultEstRoot[p] = nil, nil
 end
 
-local function limparMarcador(plr)
-	local m = marcadoresJogadores[plr]
-	if m and m.tagGui then
-		pcall(function() m.tagGui:Destroy() end)
-	end
-	marcadoresJogadores[plr] = nil
+local function limpMarc(plr)
+	local m = marcPlr[plr]
+	if m and m.tagGui then pcall(function() m.tagGui:Destroy() end) end
+	marcPlr[plr] = nil
 end
 
-local function garantirMarcador(plr, root)
-	local m = marcadoresJogadores[plr]
+local function garMarc(plr, root)
+	local m = marcPlr[plr]
 	if m and m.tagGui and m.tagGui.Parent then
-		if m.tagGui.Adornee ~= root then
-			m.tagGui.Adornee = root
-		end
+		if m.tagGui.Adornee ~= root then m.tagGui.Adornee = root end
 		return m
 	end
-	limparMarcador(plr)
-
-	local tagGui = Instance.new("BillboardGui")
-	tagGui.Name = "AMG_Focus_Indicator"
-	tagGui.Adornee = root
-	tagGui.Size = UDim2.new(0, 16, 0, 16)
-	tagGui.StudsOffset = Vector3.new(0, 3.6, 0)
-	tagGui.AlwaysOnTop = true
-	tagGui.Enabled = false
-	tagGui.Parent = parentGui
-
-	local dot = Instance.new("Frame")
-	dot.Size = UDim2.new(0, 10, 0, 10)
-	dot.Position = UDim2.new(0.5, 0, 0.5, 0)
-	dot.AnchorPoint = Vector2.new(0.5, 0.5)
-	dot.Rotation = 45
-	dot.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
-	dot.BorderSizePixel = 0
-	dot.Parent = tagGui
-	Instance.new("UIStroke", dot).Color = Color3.fromRGB(255, 255, 255)
-
-	m = { tagGui = tagGui, tagDot = dot }
-	marcadoresJogadores[plr] = m
-	return m
+	limpMarc(plr)
+	local tg = Instance.new("BillboardGui")
+	tg.Name = "AMG_Focus_Indicator"
+	tg.Adornee = root
+	tg.Size = UDim2.new(0, 16, 0, 16)
+	tg.StudsOffset = Vector3.new(0, 3.6, 0)
+	tg.AlwaysOnTop = true
+	tg.Enabled = false
+	tg.Parent = parentGui
+	local dt = Instance.new("Frame")
+	dt.Size = UDim2.new(0, 10, 0, 10)
+	dt.Position = UDim2.new(0.5, 0, 0.5, 0)
+	dt.AnchorPoint = Vector2.new(0.5, 0.5)
+	dt.Rotation = 45
+	dt.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
+	dt.BorderSizePixel = 0
+	dt.Parent = tg
+	Instance.new("UIStroke", dt).Color = Color3.fromRGB(255, 255, 255)
+	marcPlr[plr] = { tagGui = tg, tagDot = dt }
+	return marcPlr[plr]
 end
 
-local function sincronizarHitboxEMarcadores()
-	local rootsAtivos = {}
-	local transpAlvo = hitboxVisivel and HITBOX_TRANSPARENCIA_VISIVEL or 1
-	local assinaturaAlvo = string.format("%d|%.4f", hitboxSize, transpAlvo)
+syncHitMarc = function()
+	local atvs = {}
+	local trA = S.hitVis and CFG.HIT_TRANS or 1
+	local ass = string.format("%d|%.4f", S.hitSize, trA)
+	local _, mr = getCR(LocalPlayer)
+	local _, plF, dL = nil, nil, false
+	if S.pvpLoop and mr then _, plF, dL = getPvpAlvo(mr) end
 
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
-			local char, root = getCharAndRoot(plr)
-			if char and root then
-				local isAMG = ehAmigoAMG(plr)
-				local isFocus = (not isAMG) and temFiltroFocusAtivo() and ehAlvoFocus(plr)
-
-				if (isAMG or (temFiltroFocusAtivo() and not isFocus)) and originaisRoot[root] then
-					restaurarRoot(root)
+			local ch, r = getCR(plr)
+			if ch and r then
+				local isA = ehAmg(plr)
+				local isF = (not isA) and temFocus() and ehFocus(plr)
+				local exp = S.hitOn and elegivel(plr)
+				if exp and S.pvpLoop then
+					if not temFocus() then exp = (plF and dL) and (plr == plF) or false
+					else exp = (plF and dL and plr == plF) or false end
 				end
-
-				local m = garantirMarcador(plr, root)
+				if not exp and origRoot[r] then restRoot(r) end
+				local m = garMarc(plr, r)
 				if m and m.tagGui and m.tagDot then
-					if isAMG then
-						m.tagGui.Enabled = true
-						m.tagDot.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
-					elseif isFocus then
-						m.tagGui.Enabled = true
-						m.tagDot.BackgroundColor3 = Color3.fromRGB(230, 45, 45)
-					else
-						m.tagGui.Enabled = false
-					end
+					if isA then m.tagGui.Enabled = true; m.tagDot.BackgroundColor3 = Color3.fromRGB(45, 215, 95)
+					elseif isF or (S.pvpLoop and plr == plF) then m.tagGui.Enabled = true; m.tagDot.BackgroundColor3 = Color3.fromRGB(230, 45, 45)
+					else m.tagGui.Enabled = false end
 				end
-
-				local deveExpandir = hitboxAtivo and jogadorElegivelComoAlvo(plr)
-				if deveExpandir then
-					rootsAtivos[root] = true
-					if not originaisRoot[root] then
-						originaisRoot[root] = {
-							Size = root.Size,
-							Transparency = root.Transparency,
-							CanCollide = root.CanCollide
-						}
-					end
-					if ultimoEstadoAplicado[root] ~= assinaturaAlvo or root.Size.X ~= hitboxSize then
-						ultimoEstadoAplicado[root] = assinaturaAlvo
-						pcall(function()
-							root.CanCollide = false
-							root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-							root.Color = COR_HITBOX_AURA
-							root.Transparency = transpAlvo
-						end)
+				if exp then
+					atvs[r] = true
+					if not origRoot[r] then origRoot[r] = { Size = r.Size, Transparency = r.Transparency, CanCollide = r.CanCollide } end
+					if ultEstRoot[r] ~= ass or r.Size.X ~= S.hitSize then
+						ultEstRoot[r] = ass
+						pcall(function() r.CanCollide = false; r.Size = Vector3.new(S.hitSize, S.hitSize, S.hitSize); r.Color = CFG.COR_HIT; r.Transparency = trA end)
 					end
 				end
 			end
 		end
 	end
+	for p in pairs(origRoot) do if not atvs[p] then restRoot(p) end end
+	for plr in pairs(marcPlr) do if plr.Parent ~= Players then limpMarc(plr) end end
+end
 
-	for part in pairs(originaisRoot) do
-		if not rootsAtivos[part] then
-			restaurarRoot(part)
+do
+	local function corVida(pct)
+		local p = math.clamp(pct, 0, 1)
+		local v, a, r = Color3.fromRGB(45, 225, 95), Color3.fromRGB(245, 205, 45), Color3.fromRGB(235, 50, 50)
+		return p >= 0.5 and a:Lerp(v, (p - 0.5) / 0.5) or r:Lerp(a, p / 0.5)
+	end
+
+	local function limpEspPlr(plr)
+		local o = espObjs[plr]
+		if o then
+			if o.bb then pcall(function() o.bb:Destroy() end) end
+			if o.hl then pcall(function() o.hl:Destroy() end) end
+			espObjs[plr] = nil
 		end
 	end
 
-	for plr in pairs(marcadoresJogadores) do
-		if plr.Parent ~= Players then
-			limparMarcador(plr)
-		end
+	local function limpTodosEsp()
+		for plr in pairs(espObjs) do limpEspPlr(plr) end
 	end
+
+	local function garEspPlr(plr, ch, ad)
+		if not parentGui or not plr or plr == LocalPlayer or not ch or not ad then return nil end
+		local o = espObjs[plr]
+		if not o then o = {}; espObjs[plr] = o end
+		if not o.bb or not o.bb.Parent then
+			local bb = Instance.new("BillboardGui")
+			bb.Name = "VoidEspTag"
+			bb.Size = UDim2.new(0, 168, 0, 40)
+			bb.StudsOffset = Vector3.new(0, 2.75, 0)
+			bb.AlwaysOnTop = true
+			bb.MaxDistance = CFG.ESP_MAX_DIST
+			bb.ResetOnSpawn = false
+			bb.Parent = parentGui
+
+			local nl = Instance.new("TextLabel")
+			nl.Size = UDim2.new(1, 0, 0, 15)
+			nl.BackgroundTransparency = 1
+			nl.TextColor3 = Color3.fromRGB(255, 255, 255)
+			nl.TextStrokeColor3 = Color3.fromRGB(12, 12, 16)
+			nl.TextStrokeTransparency = 0.15
+			nl.Font = Enum.Font.GothamBold
+			nl.TextSize = 12
+			nl.Parent = bb
+
+			local hc = Instance.new("Frame")
+			hc.Size = UDim2.new(0, 118, 0, 9)
+			hc.Position = UDim2.new(0.5, 0, 0, 17)
+			hc.AnchorPoint = Vector2.new(0.5, 0)
+			hc.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
+			hc.BackgroundTransparency = 0.15
+			hc.BorderSizePixel = 0
+			hc.Parent = bb
+			Instance.new("UICorner", hc).CornerRadius = UDim.new(0, 3)
+			local hs = Instance.new("UIStroke")
+			hs.Color = Color3.fromRGB(255, 255, 255)
+			hs.Thickness = 1
+			hs.Transparency = 0.55
+			hs.Parent = hc
+
+			local hf = Instance.new("Frame")
+			hf.Size = UDim2.new(1, -2, 1, -2)
+			hf.Position = UDim2.new(0, 1, 0, 1)
+			hf.BackgroundColor3 = Color3.fromRGB(45, 225, 95)
+			hf.BorderSizePixel = 0
+			hf.Parent = hc
+			Instance.new("UICorner", hf).CornerRadius = UDim.new(0, 2)
+
+			local ht = Instance.new("TextLabel")
+			ht.Size = UDim2.new(1, 0, 0, 11)
+			ht.Position = UDim2.new(0, 0, 0, 27)
+			ht.BackgroundTransparency = 1
+			ht.TextColor3 = Color3.fromRGB(235, 235, 245)
+			ht.TextStrokeColor3 = Color3.fromRGB(12, 12, 16)
+			ht.TextStrokeTransparency = 0.2
+			ht.Font = Enum.Font.GothamBold
+			ht.TextSize = 10
+			ht.Parent = bb
+
+			o.bb, o.nl, o.hc, o.hf, o.ht = bb, nl, hc, hf, ht
+		end
+		if o.bb.Adornee ~= ad then o.bb.Adornee = ad end
+		if not o.hl or not o.hl.Parent or o.hl.Adornee ~= ch then
+			if o.hl then pcall(function() o.hl:Destroy() end) end
+			local hl = Instance.new("Highlight")
+			hl.Name = "VoidEspBodyHighlight"
+			hl.Adornee = ch
+			hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			hl.FillTransparency = 0.72
+			hl.OutlineTransparency = 0.1
+			hl.Parent = parentGui
+			o.hl = hl
+		end
+		return o
+	end
+
+	S.syncEsp = function(now)
+		if not S.espOn then
+			if next(espObjs) ~= nil then limpTodosEsp() end
+			return
+		end
+		local t = now or os.clock()
+		if (t - tEsp) < 0.12 then return end
+		tEsp = t
+		local _, mr = getCR(LocalPlayer)
+		local orig = (S.inv and S.posInv) or (mr and mr.Position)
+
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local ch = plr.Character
+				local h = ch and ch:FindFirstChildOfClass("Humanoid")
+				local ad = ch and (ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart)
+				local r = ch and (ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart)
+				if ch and h and h.Health > 0 and ad and ad.Parent and ((not orig or not r) or ((r.Position - orig).Magnitude <= CFG.ESP_MAX_DIST)) then
+					local o = garEspPlr(plr, ch, ad)
+					if o then
+						local isA = ehAmg(plr)
+						local isF = (not isA) and temFocus() and ehFocus(plr)
+						local corT = isA and Color3.fromRGB(65, 235, 115) or (isF and CFG.ROXO or Color3.fromRGB(245, 245, 255))
+						if o.bb then
+							o.bb.Enabled = (S.espName or S.espHp)
+							o.nl.Visible = S.espName
+							if S.espName then
+								o.nl.Text = (plr.DisplayName and plr.DisplayName ~= "" and plr.DisplayName ~= plr.Name) and (plr.DisplayName .. " (@" .. plr.Name .. ")") or plr.Name
+								o.nl.TextColor3 = corT
+							end
+							local mHp = math.max(h.MaxHealth or 100, 1)
+							local hpA = math.clamp(h.Health or 0, 0, mHp)
+							local pct = math.clamp(hpA / mHp, 0, 1)
+							local cV = corVida(pct)
+							o.hc.Visible = S.espHp
+							o.ht.Visible = S.espHp
+							if S.espHp then
+								o.hf.Size = UDim2.new(math.max(0, pct), -2, 1, -2)
+								o.hf.BackgroundColor3 = cV
+								o.ht.Text = string.format("%d / %d HP", math.floor(hpA + 0.5), math.floor(mHp + 0.5))
+								o.ht.TextColor3 = cV
+							end
+						end
+						if o.hl then
+							o.hl.Enabled = S.espBody
+							if S.espBody then
+								local cC = isA and Color3.fromRGB(55, 225, 110) or (isF and CFG.ROXO or Color3.fromRGB(220, 65, 255))
+								o.hl.FillColor, o.hl.OutlineColor = cC, cC
+							end
+						end
+					end
+				else
+					limpEspPlr(plr)
+				end
+			end
+		end
+		for plr in pairs(espObjs) do if plr.Parent ~= Players then limpEspPlr(plr) end end
+	end
+	S.limpEspPlr = limpEspPlr
 end
 
-local painelFrameUI
-
-local function aplicarBordaRoxa(instancia, espessura)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = ROXO_NEXUS
-	stroke.Thickness = espessura or 1.2
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = instancia
-	return stroke
+-- ==========================================
+-- COMPONENTES VISUAIS (THE VOID PAINEL)
+-- ==========================================
+local function brd(inst, esp, cor)
+	local s = Instance.new("UIStroke")
+	s.Color = cor or CFG.ROXO
+	s.Thickness = esp or 1.0
+	s.Transparency = 0.25
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = inst
+	return s
 end
 
-local function criarBotaoPadrao(pai, texto, pos, tamanho, tamanhoTexto)
-	local btn = Instance.new("TextButton")
-	btn.Size = tamanho
-	btn.Position = pos
-	btn.BackgroundColor3 = BOTAO_CINZA
-	btn.Text = texto
-	btn.TextColor3 = Color3.fromRGB(240, 240, 248)
-	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = tamanhoTexto or 11
-	btn.BorderSizePixel = 0
-	btn.Parent = pai
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(btn, 1)
-	return btn
-end
+local function mkSec(p, titulo, y)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, -24, 0, 18)
+	row.Position = UDim2.new(0, 12, 0, y)
+	row.BackgroundTransparency = 1
+	row.Parent = p
 
-local function criarCampoTextoPadrao(pai, placeholder, pos, altura)
-	local box = Instance.new("TextBox")
-	box.Size = UDim2.new(1, -16, 0, altura or 23)
-	box.Position = pos
-	box.BackgroundColor3 = BOTAO_CINZA
-	box.Text = ""
-	box.PlaceholderText = placeholder
-	box.PlaceholderColor3 = Color3.fromRGB(150, 150, 162)
-	box.TextColor3 = Color3.fromRGB(240, 240, 245)
-	box.Font = Enum.Font.Gotham
-	box.TextSize = 11
-	box.ClearTextOnFocus = false
-	box.BorderSizePixel = 0
-	box.Parent = pai
-	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-	aplicarBordaRoxa(box, 1)
-	return box
-end
-
-local function criarSliderPadrao(pai, rotuloInicial, posY, minVal, maxVal, valorInicial, onChange)
 	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(1, -16, 0, 14)
-	lbl.Position = UDim2.new(0, 8, 0, posY)
+	lbl.Size = UDim2.new(1, 0, 0, 14)
+	lbl.Position = UDim2.new(0, 0, 0, 0)
 	lbl.BackgroundTransparency = 1
-	lbl.Text = rotuloInicial .. tostring(valorInicial)
-	lbl.TextColor3 = Color3.fromRGB(225, 225, 235)
-	lbl.Font = Enum.Font.GothamMedium
+	lbl.Text = string.upper(tostring(titulo or ""))
+	lbl.TextColor3 = CFG.ROXO_SUAVE
+	lbl.TextTransparency = 0
+	lbl.TextStrokeTransparency = 1
+	lbl.Font = Enum.Font.GothamBlack
 	lbl.TextSize = 11
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Parent = pai
+	lbl.Parent = row
 
-	local track = Instance.new("TextButton")
-	track.Size = UDim2.new(1, -16, 0, 13)
-	track.Position = UDim2.new(0, 8, 0, posY + 16)
-	track.BackgroundColor3 = BOTAO_CINZA
-	track.Text = ""
-	track.AutoButtonColor = false
-	track.BorderSizePixel = 0
-	track.Parent = pai
-	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(track, 1)
+	local line = Instance.new("Frame")
+	line.Size = UDim2.new(1, 0, 0, 1)
+	line.Position = UDim2.new(0, 0, 1, -1)
+	line.BackgroundColor3 = CFG.ROXO_NEXUS
+	line.BackgroundTransparency = 0.55
+	line.BorderSizePixel = 0
+	line.Parent = row
 
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(0, 0, 1, 0)
-	fill.BackgroundColor3 = ROXO_NEXUS
-	fill.BorderSizePixel = 0
-	fill.Parent = track
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	return lbl
+end
 
-	local knob = Instance.new("Frame")
-	knob.Size = UDim2.new(0, 13, 0, 13)
-	knob.Position = UDim2.new(0, 0, 0.5, 0)
-	knob.AnchorPoint = Vector2.new(0.5, 0.5)
-	knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-	knob.BorderSizePixel = 0
-	knob.Parent = track
-	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-	aplicarBordaRoxa(knob, 1)
+local function mkBtn(p, txt, pos, sz, ts)
+	local b = Instance.new("TextButton")
+	b.Size, b.Position, b.BackgroundColor3, b.Text = sz, pos, CFG.CINZA, txt
+	b.TextColor3, b.Font, b.TextSize, b.BorderSizePixel = Color3.fromRGB(244, 242, 250), Enum.Font.GothamBold, ts or 11, 0
+	b.TextStrokeTransparency = 1
+	b.AutoButtonColor = false
+	b.Parent = p
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	brd(b, 1.0)
+	return b
+end
 
-	local function setValor(novoVal, disparar)
-		local clamped = math.clamp(math.floor(novoVal + 0.5), minVal, maxVal)
-		local pct = math.clamp((clamped - minVal) / math.max(maxVal - minVal, 1), 0, 1)
-		fill.Size = UDim2.new(pct, 0, 1, 0)
-		knob.Position = UDim2.new(pct, 0, 0.5, 0)
-		lbl.Text = rotuloInicial .. tostring(clamped)
-		if disparar and onChange then
-			onChange(clamped)
-		end
+local function mkBox(p, ph, pos, alt)
+	local bx = Instance.new("TextBox")
+	bx.Size, bx.Position, bx.BackgroundColor3, bx.Text = UDim2.new(1, -24, 0, alt or 23), pos, CFG.FUNDO_CARD, ""
+	bx.PlaceholderText, bx.PlaceholderColor3 = ph, Color3.fromRGB(145, 142, 165)
+	bx.TextColor3, bx.Font, bx.TextSize, bx.ClearTextOnFocus, bx.BorderSizePixel = Color3.fromRGB(244, 242, 250), Enum.Font.GothamMedium, 11, false, 0
+	bx.TextStrokeTransparency = 1
+	bx.Parent = p
+	Instance.new("UICorner", bx).CornerRadius = UDim.new(0, 6)
+	brd(bx, 1.0)
+	return bx
+end
+
+local function mkSlider(p, rot, y, mn, mx, ini, fn)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size, lbl.Position, lbl.BackgroundTransparency = UDim2.new(1, -24, 0, 14), UDim2.new(0, 12, 0, y), 1
+	lbl.Text, lbl.TextColor3, lbl.Font, lbl.TextSize = rot .. tostring(ini), Color3.fromRGB(232, 228, 244), Enum.Font.GothamBold, 11
+	lbl.TextStrokeTransparency = 1
+	lbl.TextXAlignment, lbl.Parent = Enum.TextXAlignment.Left, p
+
+	local tr = Instance.new("TextButton")
+	tr.Size, tr.Position, tr.BackgroundColor3 = UDim2.new(1, -24, 0, 13), UDim2.new(0, 12, 0, y + 15), CFG.CINZA
+	tr.Text, tr.AutoButtonColor, tr.BorderSizePixel, tr.Parent = "", false, 0, p
+	Instance.new("UICorner", tr).CornerRadius = UDim.new(1, 0)
+	brd(tr, 1.0)
+
+	local fl = Instance.new("Frame")
+	fl.Size, fl.BackgroundColor3, fl.BorderSizePixel, fl.Parent = UDim2.new(0, 0, 1, 0), CFG.ROXO_NEXUS, 0, tr
+	Instance.new("UICorner", fl).CornerRadius = UDim.new(1, 0)
+
+	local kb = Instance.new("Frame")
+	kb.Size, kb.Position, kb.AnchorPoint = UDim2.new(0, 14, 0, 14), UDim2.new(0, 0, 0.5, 0), Vector2.new(0.5, 0.5)
+	kb.BackgroundColor3, kb.BorderSizePixel, kb.Parent = Color3.fromRGB(248, 246, 255), 0, tr
+	Instance.new("UICorner", kb).CornerRadius = UDim.new(1, 0)
+	brd(kb, 1.0)
+
+	local function setV(nv, disp)
+		local cl = math.clamp(math.floor(nv + 0.5), mn, mx)
+		local pct = math.clamp((cl - mn) / math.max(mx - mn, 1), 0, 1)
+		fl.Size = UDim2.new(pct, 0, 1, 0)
+		kb.Position = UDim2.new(pct, 0, 0.5, 0)
+		lbl.Text = rot .. tostring(cl)
+		if disp and fn then fn(cl) end
 	end
-
-	setValor(valorInicial, false)
+	setV(ini, false)
 
 	return {
-		track = track,
-		setValorPorPosicaoX = function(posX)
-			local largura = math.max(track.AbsoluteSize.X, 1)
-			local rel = math.clamp((posX - track.AbsolutePosition.X) / largura, 0, 1)
-			setValor(minVal + rel * (maxVal - minVal), true)
+		track = tr,
+		setValorPorPosicaoX = function(px)
+			local rel = math.clamp((px - tr.AbsolutePosition.X) / math.max(tr.AbsoluteSize.X, 1), 0, 1)
+			setV(mn + rel * (mx - mn), true)
 		end
 	}
 end
 
-local function criarPainelHitbox()
+local function criarPainel()
 	if not parentGui then return end
-	local antigo = parentGui:FindFirstChild("UniversalCombatPanel")
-	if antigo then antigo:Destroy() end
+	local ant = parentGui:FindFirstChild("UniversalCombatPanel")
+	if ant then ant:Destroy() end
 
 	local gui = Instance.new("ScreenGui")
-	gui.Name = "UniversalCombatPanel"
-	gui.ResetOnSpawn = false
-	gui.Parent = parentGui
+	gui.Name, gui.ResetOnSpawn, gui.Parent = "UniversalCombatPanel", false, parentGui
 
-	local frame = Instance.new("Frame")
-	frame.Name = "MainPanel"
-	frame.Size = UDim2.new(0, 200, 0, 476)
-	frame.Position = POSICAO_PAINEL_PADRAO
-	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-	frame.BorderSizePixel = 0
-	frame.Active = true
-	frame.Parent = gui
+	local fr = Instance.new("Frame")
+	fr.Size, fr.Position, fr.BackgroundColor3 = UDim2.new(0, CFG.PAINEL_W, 0, CFG.PAINEL_H), CFG.POS_PAINEL, CFG.FUNDO_PAINEL
+	fr.BorderSizePixel, fr.Active, fr.ClipsDescendants, fr.Parent = 0, true, true, gui
+	Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 10)
+	brd(fr, 1.3, CFG.ROXO)
 
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-	aplicarBordaRoxa(frame, 1.5)
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 15, 30)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(12, 12, 17)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 11)),
+	})
+	grad.Rotation = 90
+	grad.Parent = fr
 
-	local titulo = Instance.new("TextLabel")
-	titulo.Name = "PanelTitle"
-	titulo.Size = UDim2.new(1, -16, 0, 18)
-	titulo.Position = UDim2.new(0, 8, 0, 6)
-	titulo.BackgroundTransparency = 1
-	titulo.Text = "The VOID Painel"
-	titulo.TextColor3 = ROXO_NEXUS
-	titulo.Font = Enum.Font.GothamBold
-	titulo.TextSize = 13
-	titulo.TextXAlignment = Enum.TextXAlignment.Center
-	titulo.Parent = frame
+	local topBar = Instance.new("Frame")
+	topBar.Size = UDim2.new(1, -24, 0, 32)
+	topBar.Position = UDim2.new(0, 12, 0, 10)
+	topBar.BackgroundColor3 = CFG.FUNDO_TOPO
+	topBar.BorderSizePixel = 0
+	topBar.ZIndex = 2
+	topBar.Parent = fr
+	Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 7)
+	brd(topBar, 1.1, CFG.ROXO)
 
-	local abasNomes = { "Combat", "Move", "Visual", "Config" }
-	local abasBotoes = {}
-	local abasPaginas = {}
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(0, 4, 1, -12)
+	accent.Position = UDim2.new(0, 8, 0, 6)
+	accent.BackgroundColor3 = CFG.ROXO_NEXUS
+	accent.BorderSizePixel = 0
+	accent.ZIndex = 3
+	accent.Parent = topBar
+	Instance.new("UICorner", accent).CornerRadius = UDim.new(1, 0)
 
-	local barraAbas = Instance.new("Frame")
-	barraAbas.Name = "TopTabsBar"
-	barraAbas.Size = UDim2.new(1, -16, 0, 22)
-	barraAbas.Position = UDim2.new(0, 8, 0, 27)
-	barraAbas.BackgroundTransparency = 1
-	barraAbas.Parent = frame
+	local tit = Instance.new("TextLabel")
+	tit.Size = UDim2.new(1, EH_HIGHSCHOOL_RP and -78 or -22, 1, 0)
+	tit.Position = UDim2.new(0, 18, 0, 0)
+	tit.BackgroundTransparency = 1
+	tit.Text = "THE VOID PAINEL"
+	tit.TextColor3 = Color3.fromRGB(248, 245, 255)
+	tit.TextStrokeTransparency = 1
+	tit.Font = Enum.Font.GothamBlack
+	tit.TextSize = 14
+	tit.TextXAlignment = Enum.TextXAlignment.Left
+	tit.ZIndex = 3
+	tit.Parent = topBar
 
-	local larguraDisponivel = 184
-	local espacoEntreAbas = 3
-	local larguraAba = math.floor((larguraDisponivel - espacoEntreAbas * (#abasNomes - 1)) / #abasNomes)
-
-	for idx, nomeAba in ipairs(abasNomes) do
-		local xPos = (idx - 1) * (larguraAba + espacoEntreAbas)
-		local tabBtn = Instance.new("TextButton")
-		tabBtn.Name = "Tab_" .. nomeAba
-		tabBtn.Size = UDim2.new(0, larguraAba, 1, 0)
-		tabBtn.Position = UDim2.new(0, xPos, 0, 0)
-		tabBtn.BackgroundColor3 = BOTAO_CINZA
-		tabBtn.Text = nomeAba
-		tabBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-		tabBtn.Font = Enum.Font.GothamBold
-		tabBtn.TextSize = 9
-		tabBtn.BorderSizePixel = 0
-		tabBtn.Parent = barraAbas
-		Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0, 4)
-		aplicarBordaRoxa(tabBtn, 1)
-
-		local pagina = Instance.new("Frame")
-		pagina.Name = "Page_" .. nomeAba
-		pagina.Size = UDim2.new(1, 0, 1, -74)
-		pagina.Position = UDim2.new(0, 0, 0, 53)
-		pagina.BackgroundTransparency = 1
-		pagina.Visible = (idx == 1)
-		pagina.Parent = frame
-
-		abasBotoes[nomeAba] = tabBtn
-		abasPaginas[nomeAba] = pagina
+	if EH_HIGHSCHOOL_RP then
+		local tagHs = Instance.new("TextLabel")
+		tagHs.Size = UDim2.new(0, 52, 0, 18)
+		tagHs.Position = UDim2.new(1, -60, 0.5, 0)
+		tagHs.AnchorPoint = Vector2.new(0, 0.5)
+		tagHs.BackgroundColor3 = CFG.ROXO_ON
+		tagHs.Text = "HS RP"
+		tagHs.TextColor3 = Color3.fromRGB(255, 255, 255)
+		tagHs.TextStrokeTransparency = 1
+		tagHs.Font = Enum.Font.GothamBlack
+		tagHs.TextSize = 10
+		tagHs.BorderSizePixel = 0
+		tagHs.ZIndex = 3
+		tagHs.Parent = topBar
+		Instance.new("UICorner", tagHs).CornerRadius = UDim.new(0, 4)
 	end
 
-	local function selecionarAba(nomeEscolhido)
-		for nomeAba, pagina in pairs(abasPaginas) do
-			local estaSelecionada = (nomeAba == nomeEscolhido)
-			pagina.Visible = estaSelecionada
-			local btn = abasBotoes[nomeAba]
-			if btn then
-				btn.BackgroundColor3 = estaSelecionada and BOTAO_ROXO_ON or BOTAO_CINZA
-				btn.TextColor3 = estaSelecionada and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 220)
+	local sepHeader = Instance.new("Frame")
+	sepHeader.Size = UDim2.new(1, -24, 0, 1)
+	sepHeader.Position = UDim2.new(0, 12, 0, 48)
+	sepHeader.BackgroundColor3 = CFG.ROXO_NEXUS
+	sepHeader.BackgroundTransparency = 0.55
+	sepHeader.BorderSizePixel = 0
+	sepHeader.ZIndex = 2
+	sepHeader.Parent = fr
+
+	local abas = { "Combat", "Move", "Visual", "Config" }
+	local tBtns, tPags = {}, {}
+	local bar = Instance.new("Frame")
+	bar.Size, bar.Position, bar.BackgroundTransparency, bar.ZIndex, bar.Parent = UDim2.new(1, -24, 0, 26), UDim2.new(0, 12, 0, 55), 1, 2, fr
+	local gapAbas = 5
+	local innerW = CFG.PAINEL_W - 24
+	local wAba = math.floor((innerW - gapAbas * (#abas - 1)) / #abas)
+
+	for i, n in ipairs(abas) do
+		local tb = Instance.new("TextButton")
+		tb.Size, tb.Position, tb.BackgroundColor3, tb.Text = UDim2.new(0, wAba, 1, 0), UDim2.new(0, (i - 1) * (wAba + gapAbas), 0, 0), CFG.CINZA, n
+		tb.TextColor3, tb.Font, tb.TextSize, tb.BorderSizePixel, tb.ZIndex, tb.Parent = Color3.fromRGB(238, 235, 248), Enum.Font.GothamBold, 11, 0, 2, bar
+		tb.TextStrokeTransparency = 1
+		tb.AutoButtonColor = false
+		Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 6)
+		brd(tb, 1.0)
+		local pg = Instance.new("Frame")
+		pg.Size, pg.Position, pg.BackgroundTransparency, pg.Visible, pg.ZIndex, pg.Parent = UDim2.new(1, 0, 1, -112), UDim2.new(0, 0, 0, 88), 1, i == 1, 2, fr
+		tBtns[n], tPags[n] = tb, pg
+	end
+
+	local function selAba(esc)
+		for n, pg in pairs(tPags) do
+			local on = (n == esc)
+			pg.Visible = on
+			local b = tBtns[n]
+			if b then
+				b.BackgroundColor3 = on and CFG.ROXO_ON or CFG.CINZA
+				b.TextColor3 = on and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 200, 224)
 			end
 		end
 	end
+	for n, tb in pairs(tBtns) do tb.MouseButton1Click:Connect(function() selAba(n) end) end
 
-	for nomeAba, tabBtn in pairs(abasBotoes) do
-		tabBtn.MouseButton1Click:Connect(function()
-			selecionarAba(nomeAba)
-		end)
+	-- ==========================
+	-- ABA COMBAT
+	-- ==========================
+	local pC = tPags.Combat
+	mkSec(pC, "ATAQUE E MIRA", 0)
+	local bAuto = mkBtn(pC, "AutoClick VOID (E): OFF", UDim2.new(0, 12, 0, 20), UDim2.new(1, -24, 0, 24), 11)
+	local bLock = mkBtn(pC, S.lockOn and "Target Lock: ON" or "Target Lock: OFF", UDim2.new(0, 12, 0, 47), UDim2.new(1, -24, 0, 24), 11); bLock.BackgroundColor3 = S.lockOn and CFG.ROXO_ON or CFG.CINZA
+	local bPvp = mkBtn(pC, S.pvpLoop and "PvP Focus Loop: ON" or "PvP Focus Loop: OFF", UDim2.new(0, 12, 0, 74), UDim2.new(1, -24, 0, 24), 11); bPvp.BackgroundColor3 = S.pvpLoop and CFG.ROXO_ON or CFG.CINZA
+	local bKa = mkBtn(pC, S.ka and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF", UDim2.new(0, 12, 0, 101), UDim2.new(0.5, -15, 0, 24), 11); bKa.BackgroundColor3 = S.ka and CFG.ROXO_ON or CFG.CINZA
+	local bCost = mkBtn(pC, S.backCostas and "Back / Costas: ON" or "Back / Costas: OFF", UDim2.new(0.5, 3, 0, 101), UDim2.new(0.5, -15, 0, 24), 11); bCost.BackgroundColor3 = S.backCostas and CFG.ROXO_ON or CFG.CINZA
+
+	mkSec(pC, "GRAB E PUXÃO", 130)
+	local bGrabAssist = mkBtn(pC, S.grabAssist and "Grab (G): ON" or "Grab (G): OFF", UDim2.new(0, 12, 0, 150), UDim2.new(0.5, -15, 0, 24), 11); bGrabAssist.BackgroundColor3 = S.grabAssist and CFG.ROXO_ON or CFG.CINZA
+	local bSpamGrab = mkBtn(pC, S.spamGrab and "Spam Grab: ON" or "Spam Grab: OFF", UDim2.new(0.5, 3, 0, 150), UDim2.new(0.5, -15, 0, 24), 11); bSpamGrab.BackgroundColor3 = S.spamGrab and CFG.ROXO_ON or CFG.CINZA
+	local slGrabDist = mkSlider(pC, "Alcance Grab: ", 178, 1, 100, S.grabDist, function(v) S.grabDist = v end)
+	local slGrabPull = mkSlider(pC, "Distância Puxar: ", 209, 1, 100, S.grabPullDist, function(v) S.grabPullDist = v end)
+
+	mkSec(pC, "PROTEÇÕES E COMBATE", 243)
+	local bRag = mkBtn(pC, S.antiRag and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF", UDim2.new(0, 12, 0, 263), UDim2.new(0.5, -15, 0, 24), 11); bRag.BackgroundColor3 = S.antiRag and CFG.ROXO_ON or CFG.CINZA
+	local bGrab = mkBtn(pC, S.antiGrab and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF", UDim2.new(0.5, 3, 0, 263), UDim2.new(0.5, -15, 0, 24), 11); bGrab.BackgroundColor3 = S.antiGrab and CFG.ROXO_ON or CFG.CINZA
+	local bDtp = mkBtn(pC, S.deathTp and "Death TP: ON" or "Death TP: OFF", UDim2.new(0, 12, 0, 290), UDim2.new(0.5, -15, 0, 24), 11); bDtp.BackgroundColor3 = S.deathTp and CFG.ROXO_ON or CFG.CINZA
+	local bNs = mkBtn(pC, S.noSlow and "No Slow: ON" or "No Slow: OFF", UDim2.new(0.5, 3, 0, 290), UDim2.new(0.5, -15, 0, 24), 11); bNs.BackgroundColor3 = S.noSlow and CFG.ROXO_ON or CFG.CINZA
+	local bFgt = mkBtn(pC, S.fighting and "Combate: ON" or "Combate: OFF", UDim2.new(0, 12, 0, 317), UDim2.new(1, -24, 0, 24), 11); bFgt.BackgroundColor3 = S.fighting and CFG.ROXO_ON or CFG.CINZA
+
+	mkSec(pC, "HITBOX E ALVOS", 346)
+	local bHit = mkBtn(pC, S.hitOn and "Hitbox: ON" or "Hitbox: OFF", UDim2.new(0, 12, 0, 366), UDim2.new(0.5, -15, 0, 24), 11); bHit.BackgroundColor3 = S.hitOn and CFG.ROXO_ON or CFG.CINZA
+	local bVis = mkBtn(pC, S.hitVis and "Visível: Sim" or "Visível: Não", UDim2.new(0.5, 3, 0, 366), UDim2.new(0.5, -15, 0, 24), 11); bVis.BackgroundColor3 = S.hitVis and CFG.ROXO_ON or CFG.CINZA
+	local slSize = mkSlider(pC, "Tamanho Hitbox: ", 394, 3, CFG.HIT_MAX, S.hitSize, function(v) S.hitSize = v; syncHitMarc() end)
+	local bxAmg = mkBox(pC, "AMG (ex: ana pedro)...", UDim2.new(0, 12, 0, 426), 22)
+	local bxFoc = mkBox(pC, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 12, 0, 451), 22)
+	local bxBck = mkBox(pC, "Back / Costas (quem puxar)...", UDim2.new(0, 12, 0, 476), 22)
+
+	bxAmg:GetPropertyChangedSignal("Text"):Connect(function() S.amg = bxAmg.Text; S.alvoKa = nil; if S.alvoPvp and ehAmg(S.alvoPvp) then S.alvoPvp = nil end; syncHitMarc() end)
+	bxFoc:GetPropertyChangedSignal("Text"):Connect(function() S.focus = bxFoc.Text; S.alvoKa = nil; syncHitMarc() end)
+	bxBck:GetPropertyChangedSignal("Text"):Connect(function() S.backFilt = bxBck.Text end)
+
+	-- ==========================
+	-- ABA MOVE
+	-- ==========================
+	local pM = tPags.Move
+	mkSec(pM, "VELOCIDADE DE MOVIMENTO", 0)
+	local bSpd = mkBtn(pM, S.speedOn and "Speed: ON" or "Speed: OFF", UDim2.new(0, 12, 0, 22), UDim2.new(1, -24, 0, 28), 11); bSpd.BackgroundColor3 = S.speedOn and CFG.ROXO_ON or CFG.CINZA
+
+	local mBox = Instance.new("Frame")
+	mBox.Size, mBox.Position, mBox.BackgroundColor3, mBox.BorderSizePixel, mBox.Parent = UDim2.new(1, -24, 0, 30), UDim2.new(0, 12, 0, 56), CFG.FUNDO_CARD, 0, pM
+	Instance.new("UICorner", mBox).CornerRadius = UDim.new(0, 6)
+	local mStr = brd(mBox, 1.0)
+	local bPrev = Instance.new("TextButton"); bPrev.Size, bPrev.Position, bPrev.BackgroundColor3, bPrev.Text = UDim2.new(0, 28, 1, -4), UDim2.new(0, 2, 0, 2), CFG.CINZA, "<"
+	bPrev.TextColor3, bPrev.Font, bPrev.TextSize, bPrev.BorderSizePixel, bPrev.Parent = Color3.fromRGB(245, 242, 255), Enum.Font.GothamBlack, 12, 0, mBox; bPrev.TextStrokeTransparency = 1; bPrev.AutoButtonColor = false; Instance.new("UICorner", bPrev).CornerRadius = UDim.new(0, 4)
+	local lMod = Instance.new("TextLabel"); lMod.Size, lMod.Position, lMod.BackgroundTransparency = UDim2.new(1, -60, 1, 0), UDim2.new(0, 30, 0, 0), 1
+	lMod.Text, lMod.TextColor3, lMod.Font, lMod.TextSize, lMod.Parent = "Modo: " .. (CFG.MODOS_SPEED[S.speedIdx] or "CFrame"), Color3.fromRGB(224, 198, 250), Enum.Font.GothamBold, 11, mBox; lMod.TextStrokeTransparency = 1
+	local bNext = Instance.new("TextButton"); bNext.Size, bNext.Position, bNext.BackgroundColor3, bNext.Text = UDim2.new(0, 28, 1, -4), UDim2.new(1, -30, 0, 2), CFG.CINZA, ">"
+	bNext.TextColor3, bNext.Font, bNext.TextSize, bNext.BorderSizePixel, bNext.Parent = Color3.fromRGB(245, 242, 255), Enum.Font.GothamBlack, 12, 0, mBox; bNext.TextStrokeTransparency = 1; bNext.AutoButtonColor = false; Instance.new("UICorner", bNext).CornerRadius = UDim.new(0, 4)
+
+	local function updMod()
+		lMod.Text = "Modo: " .. (CFG.MODOS_SPEED[S.speedIdx] or "CFrame")
+		mStr.Color = S.speedOn and CFG.ROXO_NEXUS or CFG.ROXO
+		restWs()
 	end
+	local function cicMod(d) S.speedIdx = ((S.speedIdx - 1 + d) % #CFG.MODOS_SPEED) + 1; updMod() end
+	bPrev.MouseButton1Click:Connect(function() cicMod(-1) end)
+	bNext.MouseButton1Click:Connect(function() cicMod(1) end)
 
-	local pagCombat = abasPaginas.Combat
-	local btnAuto = criarBotaoPadrao(pagCombat, "AutoClick VOID (E): OFF", UDim2.new(0, 8, 0, 0), UDim2.new(1, -16, 0, 20), 11)
-	local btnLock = criarBotaoPadrao(
-		pagCombat,
-		targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF",
-		UDim2.new(0, 8, 0, 23),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
+	local slSpd = mkSlider(pM, "Velocidade Speed: ", 94, CFG.SPEED_MIN, CFG.SPEED_MAX, S.speedVal, function(v) S.speedVal = v end)
 
-	local btnBackCostas = criarBotaoPadrao(
-		pagCombat,
-		backCostasAtivo and "Back / Costas: ON" or "Back / Costas: OFF",
-		UDim2.new(0, 8, 0, 46),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnBackCostas.BackgroundColor3 = backCostasAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	mkSec(pM, "IMPULSO E PULO", 138)
+	local bJmp = mkBtn(pM, S.jumpOn and "Jump (Multi): ON" or "Jump (Multi): OFF", UDim2.new(0, 12, 0, 160), UDim2.new(1, -24, 0, 28), 11); bJmp.BackgroundColor3 = S.jumpOn and CFG.ROXO_ON or CFG.CINZA
+	local slJmp = mkSlider(pM, "Potência Jump: ", 196, CFG.JUMP_MIN, CFG.JUMP_MAX, S.jumpVal, function(v) S.jumpVal = v; aplJump() end)
 
-	local btnAntiRagdoll = criarBotaoPadrao(
-		pagCombat,
-		antiRagdollAtivo and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF",
-		UDim2.new(0, 8, 0, 69),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	-- ==========================
+	-- ABA VISUAL
+	-- ==========================
+	local pV = tPags.Visual
+	mkSec(pV, "PERSONAGEM E HUD", 0)
+	local bNa = mkBtn(pV, S.noAnim and "No Animation: ON" or "No Animation: OFF", UDim2.new(0, 12, 0, 22), UDim2.new(1, -24, 0, 27), 11); bNa.BackgroundColor3 = S.noAnim and CFG.ROXO_ON or CFG.CINZA
+	local bIv = mkBtn(pV, S.inv and "Invisível: ON" or "Invisível: OFF", UDim2.new(0, 12, 0, 53), UDim2.new(1, -24, 0, 27), 11); bIv.BackgroundColor3 = S.inv and CFG.ROXO_ON or CFG.CINZA
+	local bHl = mkBtn(pV, S.hudLosango and "HUD Losango: ON" or "HUD Losango: OFF", UDim2.new(0, 12, 0, 84), UDim2.new(0.5, -15, 0, 26), 11); bHl.BackgroundColor3 = S.hudLosango and CFG.ROXO_ON or CFG.CINZA
+	local bHs = mkBtn(pV, S.hudStats and "FPS / MS: ON" or "FPS / MS: OFF", UDim2.new(0.5, 3, 0, 84), UDim2.new(0.5, -15, 0, 26), 11); bHs.BackgroundColor3 = S.hudStats and CFG.ROXO_ON or CFG.CINZA
 
-	local btnAntiGrabRag = criarBotaoPadrao(
-		pagCombat,
-		antiGrabRagAtivo and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF",
-		UDim2.new(0, 8, 0, 92),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnAntiGrabRag.BackgroundColor3 = antiGrabRagAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	mkSec(pV, "VOID ESP", 120)
+	local bEsp = mkBtn(pV, S.espOn and "VOID ESP: ON" or "VOID ESP: OFF", UDim2.new(0, 12, 0, 142), UDim2.new(1, -24, 0, 27), 11); bEsp.BackgroundColor3 = S.espOn and CFG.ROXO_ON or CFG.CINZA
+	local bEspN = mkBtn(pV, S.espName and "ESP Name: ON" or "ESP Name: OFF", UDim2.new(0, 12, 0, 173), UDim2.new(0.5, -15, 0, 26), 11); bEspN.BackgroundColor3 = S.espName and CFG.ROXO_ON or CFG.CINZA
+	local bEspH = mkBtn(pV, S.espHp and "ESP Health: ON" or "ESP Health: OFF", UDim2.new(0.5, 3, 0, 173), UDim2.new(0.5, -15, 0, 26), 11); bEspH.BackgroundColor3 = S.espHp and CFG.ROXO_ON or CFG.CINZA
+	local bEspB = mkBtn(pV, S.espBody and "ESP Body: ON" or "ESP Body: OFF", UDim2.new(0, 12, 0, 203), UDim2.new(1, -24, 0, 26), 11); bEspB.BackgroundColor3 = S.espBody and CFG.ROXO_ON or CFG.CINZA
 
-	local btnDeathTp = criarBotaoPadrao(
-		pagCombat,
-		deathTpAtivo and "Death TP: ON" or "Death TP: OFF",
-		UDim2.new(0, 8, 0, 115),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnDeathTp.BackgroundColor3 = deathTpAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	-- ==========================
+	-- ABA CONFIG (ÚNICO BOTÃO RESETAR PERSONAGEM)
+	-- ==========================
+	local pCfg = tPags.Config
+	mkSec(pCfg, "DESEMPENHO E JANELA", 0)
+	local bOpt = mkBtn(pCfg, S.boostFps and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF", UDim2.new(0, 12, 0, 22), UDim2.new(1, -24, 0, 28), 11); bOpt.BackgroundColor3 = S.boostFps and CFG.ROXO_ON or CFG.CINZA
+	local bRstChar = mkBtn(pCfg, "Resetar Personagem", UDim2.new(0, 12, 0, 54), UDim2.new(1, -24, 0, 28), 11)
+	local bRst = mkBtn(pCfg, "Resetar Posição do Painel", UDim2.new(0, 12, 0, 86), UDim2.new(1, -24, 0, 28), 11)
 
-	local btnNoSlow = criarBotaoPadrao(
-		pagCombat,
-		noSlowAtivo and "No Slow: ON" or "No Slow: OFF",
-		UDim2.new(0, 8, 0, 138),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	mkSec(pCfg, "ATALHOS DO TECLADO", 124)
+	local infCard = Instance.new("Frame")
+	infCard.Size = UDim2.new(1, -24, 0, 110)
+	infCard.Position = UDim2.new(0, 12, 0, 146)
+	infCard.BackgroundColor3 = CFG.FUNDO_CARD
+	infCard.BorderSizePixel = 0
+	infCard.Parent = pCfg
+	Instance.new("UICorner", infCard).CornerRadius = UDim.new(0, 6)
+	brd(infCard, 1.0)
 
-	local btnKillAura = criarBotaoPadrao(
-		pagCombat,
-		killAuraAtivo and "Kill Aura (Q): ON" or "Kill Aura (Q): OFF",
-		UDim2.new(0, 8, 0, 161),
-		UDim2.new(1, -16, 0, 20),
-		11
-	)
-	btnKillAura.BackgroundColor3 = killAuraAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	local inf = Instance.new("TextLabel")
+	inf.Size, inf.Position, inf.BackgroundTransparency = UDim2.new(1, -16, 1, -10), UDim2.new(0, 8, 0, 5), 1
+	inf.Text, inf.TextColor3, inf.TextWrapped, inf.Font, inf.TextSize = "AutoClick: E\nKill Aura: Q\nGrab Assist: G\nAbrir / Ocultar Painel: J\nCancelar PvP Loop: R / RMB", Color3.fromRGB(220, 216, 236), true, Enum.Font.GothamMedium, 11
+	inf.TextXAlignment, inf.TextYAlignment, inf.Parent = Enum.TextXAlignment.Left, Enum.TextYAlignment.Top, infCard
+	inf.TextStrokeTransparency = 1
 
-	local btnHit = criarBotaoPadrao(
-		pagCombat,
-		hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF",
-		UDim2.new(0, 8, 0, 184),
-		UDim2.new(0.5, -10, 0, 20),
-		10
-	)
-	btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
+	local rod = Instance.new("TextLabel")
+	rod.Size, rod.Position, rod.BackgroundTransparency = UDim2.new(1, -24, 0, 18), UDim2.new(0, 12, 1, -22), 1
+	rod.Text, rod.TextColor3, rod.Font, rod.TextSize, rod.ZIndex, rod.Parent = "By: VOID Santos7x", Color3.fromRGB(220, 194, 248), Enum.Font.GothamBold, 11, 2, fr
+	rod.TextStrokeTransparency = 1
 
-	local btnVis = criarBotaoPadrao(
-		pagCombat,
-		hitboxVisivel and "Visivel: Sim" or "Visivel: Nao",
-		UDim2.new(0.5, 2, 0, 184),
-		UDim2.new(0.5, -10, 0, 20),
-		10
-	)
-	btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local sliderSize = criarSliderPadrao(pagCombat, "Size: ", 208, 3, HITBOX_MAX_SLIDER, hitboxSize, function(novoSize)
-		hitboxSize = novoSize
-		sincronizarHitboxEMarcadores()
-	end)
-
-	local boxAMG = criarCampoTextoPadrao(pagCombat, "AMG (ex: ana pedro)...", UDim2.new(0, 8, 0, 242), 19)
-	local boxFocus = criarCampoTextoPadrao(pagCombat, "Focus (ex: alvo1 alvo2)...", UDim2.new(0, 8, 0, 263), 19)
-	local boxBackFilter = criarCampoTextoPadrao(pagCombat, "Back / Costas (quem usar)...", UDim2.new(0, 8, 0, 284), 19)
-
-	boxAMG:GetPropertyChangedSignal("Text"):Connect(function()
-		amgTexto = boxAMG.Text
-		alvoKillAuraPlayer = nil
-		sincronizarHitboxEMarcadores()
-	end)
-
-	boxFocus:GetPropertyChangedSignal("Text"):Connect(function()
-		focusTexto = boxFocus.Text
-		alvoKillAuraPlayer = nil
-		sincronizarHitboxEMarcadores()
-	end)
-
-	boxBackFilter:GetPropertyChangedSignal("Text"):Connect(function()
-		backFilterTexto = boxBackFilter.Text
-	end)
-
-	local pagMove = abasPaginas.Move
-	local btnSpeed = criarBotaoPadrao(
-		pagMove,
-		speedCFrameAtivo and "Speed: ON" or "Speed: OFF",
-		UDim2.new(0, 8, 0, 2),
-		UDim2.new(1, -16, 0, 22),
-		11
-	)
-	btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local filtroSpeedBox = Instance.new("Frame")
-	filtroSpeedBox.Name = "SpeedModeFilterBox"
-	filtroSpeedBox.Size = UDim2.new(1, -16, 0, 24)
-	filtroSpeedBox.Position = UDim2.new(0, 8, 0, 27)
-	filtroSpeedBox.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-	filtroSpeedBox.BorderSizePixel = 0
-	filtroSpeedBox.Parent = pagMove
-	Instance.new("UICorner", filtroSpeedBox).CornerRadius = UDim.new(0, 5)
-	local filtroSpeedStroke = aplicarBordaRoxa(filtroSpeedBox, 1.3)
-
-	local btnModoPrev = Instance.new("TextButton")
-	btnModoPrev.Size = UDim2.new(0, 22, 1, -4)
-	btnModoPrev.Position = UDim2.new(0, 2, 0, 2)
-	btnModoPrev.BackgroundColor3 = BOTAO_CINZA
-	btnModoPrev.Text = "<"
-	btnModoPrev.TextColor3 = Color3.fromRGB(240, 240, 250)
-	btnModoPrev.Font = Enum.Font.GothamBlack
-	btnModoPrev.TextSize = 11
-	btnModoPrev.BorderSizePixel = 0
-	btnModoPrev.Parent = filtroSpeedBox
-	Instance.new("UICorner", btnModoPrev).CornerRadius = UDim.new(0, 4)
-
-	local lblModoSpeed = Instance.new("TextLabel")
-	lblModoSpeed.Size = UDim2.new(1, -48, 1, 0)
-	lblModoSpeed.Position = UDim2.new(0, 24, 0, 0)
-	lblModoSpeed.BackgroundTransparency = 1
-	lblModoSpeed.Text = "Modo: " .. obterModoSpeedAtual()
-	lblModoSpeed.TextColor3 = Color3.fromRGB(220, 185, 255)
-	lblModoSpeed.Font = Enum.Font.GothamBold
-	lblModoSpeed.TextSize = 10
-	lblModoSpeed.Parent = filtroSpeedBox
-
-	local btnModoNext = Instance.new("TextButton")
-	btnModoNext.Size = UDim2.new(0, 22, 1, -4)
-	btnModoNext.Position = UDim2.new(1, -24, 0, 2)
-	btnModoNext.BackgroundColor3 = BOTAO_CINZA
-	btnModoNext.Text = ">"
-	btnModoNext.TextColor3 = Color3.fromRGB(240, 240, 250)
-	btnModoNext.Font = Enum.Font.GothamBlack
-	btnModoNext.TextSize = 11
-	btnModoNext.BorderSizePixel = 0
-	btnModoNext.Parent = filtroSpeedBox
-	Instance.new("UICorner", btnModoNext).CornerRadius = UDim.new(0, 4)
-
-	local function atualizarSeletorModoSpeed()
-		lblModoSpeed.Text = "Modo: " .. obterModoSpeedAtual()
-		filtroSpeedStroke.Color = speedCFrameAtivo and Color3.fromRGB(185, 115, 255) or ROXO_NEXUS
-		restaurarWalkSpeedSeNecessario()
+	local dragSl, dragFr, offFr = nil, false, Vector2.zero
+	for _, sl in ipairs({ slGrabDist, slGrabPull, slSize, slSpd, slJmp }) do
+		sl.track.MouseButton1Down:Connect(function() dragSl, dragFr = sl, false; sl.setValorPorPosicaoX(UserInputService:GetMouseLocation().X) end)
 	end
-
-	local function ciclarModoSpeed(delta)
-		local total = #MODOS_SPEED
-		speedModoIdx = ((speedModoIdx - 1 + delta) % total) + 1
-		atualizarSeletorModoSpeed()
-	end
-
-	btnModoPrev.MouseButton1Click:Connect(function()
-		ciclarModoSpeed(-1)
-	end)
-
-	btnModoNext.MouseButton1Click:Connect(function()
-		ciclarModoSpeed(1)
-	end)
-
-	local sliderSpeed = criarSliderPadrao(pagMove, "Speed: ", 54, SPEED_CFRAME_MIN, SPEED_CFRAME_MAX, speedCFrameValor, function(novoSpeed)
-		speedCFrameValor = novoSpeed
-	end)
-
-	local btnJumpMulti = criarBotaoPadrao(
-		pagMove,
-		jumpMultiAtivo and "Jump (Multi): ON" or "Jump (Multi): OFF",
-		UDim2.new(0, 8, 0, 94),
-		UDim2.new(1, -16, 0, 22),
-		11
-	)
-	btnJumpMulti.BackgroundColor3 = jumpMultiAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local sliderJump = criarSliderPadrao(pagMove, "Jump: ", 122, JUMP_MULTI_MIN, JUMP_MULTI_MAX, jumpMultiValor, function(novoJump)
-		jumpMultiValor = novoJump
-		aplicarJumpMultiplicador()
-	end)
-
-	local dicaMove = Instance.new("TextLabel")
-	dicaMove.Size = UDim2.new(1, -16, 0, 46)
-	dicaMove.Position = UDim2.new(0, 8, 0, 160)
-	dicaMove.BackgroundTransparency = 1
-	dicaMove.Text = "CFrame na escala original mantendo animacao. Jump regulado e suave."
-	dicaMove.TextColor3 = Color3.fromRGB(165, 165, 180)
-	dicaMove.TextWrapped = true
-	dicaMove.Font = Enum.Font.Gotham
-	dicaMove.TextSize = 10
-	dicaMove.TextXAlignment = Enum.TextXAlignment.Left
-	dicaMove.Parent = pagMove
-
-	local pagVisual = abasPaginas.Visual
-	local btnNoAnim = criarBotaoPadrao(
-		pagVisual,
-		noAnimationAtivo and "No Animation: ON" or "No Animation: OFF",
-		UDim2.new(0, 8, 0, 4),
-		UDim2.new(1, -16, 0, 25),
-		11
-	)
-	btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local btnHudLosango = criarBotaoPadrao(
-		pagVisual,
-		hudLosangoVisivel and "HUD Losango: ON" or "HUD Losango: OFF",
-		UDim2.new(0, 8, 0, 35),
-		UDim2.new(1, -16, 0, 25),
-		11
-	)
-	btnHudLosango.BackgroundColor3 = hudLosangoVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local btnHudStats = criarBotaoPadrao(
-		pagVisual,
-		hudStatsVisivel and "FPS / MS: ON" or "FPS / MS: OFF",
-		UDim2.new(0, 8, 0, 66),
-		UDim2.new(1, -16, 0, 25),
-		11
-	)
-	btnHudStats.BackgroundColor3 = hudStatsVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local dicaVisual = Instance.new("TextLabel")
-	dicaVisual.Size = UDim2.new(1, -16, 0, 44)
-	dicaVisual.Position = UDim2.new(0, 8, 0, 99)
-	dicaVisual.BackgroundTransparency = 1
-	dicaVisual.Text = "No Animation corta soco/G. FPS/MS aparece embaixo do losango."
-	dicaVisual.TextColor3 = Color3.fromRGB(165, 165, 180)
-	dicaVisual.TextWrapped = true
-	dicaVisual.Font = Enum.Font.Gotham
-	dicaVisual.TextSize = 10
-	dicaVisual.TextXAlignment = Enum.TextXAlignment.Left
-	dicaVisual.Parent = pagVisual
-
-	local pagConfig = abasPaginas.Config
-	local btnOtimizar = criarBotaoPadrao(
-		pagConfig,
-		boostFpsRedeAtivo and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF",
-		UDim2.new(0, 8, 0, 4),
-		UDim2.new(1, -16, 0, 25),
-		10
-	)
-	btnOtimizar.BackgroundColor3 = boostFpsRedeAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-
-	local btnResetPos = criarBotaoPadrao(
-		pagConfig,
-		"Resetar Posicao",
-		UDim2.new(0, 8, 0, 34),
-		UDim2.new(1, -16, 0, 25),
-		11
-	)
-
-	local infoAtalhos = Instance.new("TextLabel")
-	infoAtalhos.Size = UDim2.new(1, -16, 0, 88)
-	infoAtalhos.Position = UDim2.new(0, 8, 0, 66)
-	infoAtalhos.BackgroundTransparency = 1
-	infoAtalhos.Text = "AutoClick: E\nKill Aura: Q\nPainel: J\nOtimizar corta efeitos/sombras.\nPing depende da rota/servidor."
-	infoAtalhos.TextColor3 = Color3.fromRGB(190, 190, 205)
-	infoAtalhos.TextWrapped = true
-	infoAtalhos.Font = Enum.Font.GothamMedium
-	infoAtalhos.TextSize = 10
-	infoAtalhos.TextXAlignment = Enum.TextXAlignment.Left
-	infoAtalhos.TextYAlignment = Enum.TextYAlignment.Top
-	infoAtalhos.Parent = pagConfig
-
-	local rodape = Instance.new("TextLabel")
-	rodape.Name = "FooterCredits"
-	rodape.Size = UDim2.new(1, -16, 0, 14)
-	rodape.Position = UDim2.new(0, 8, 1, -18)
-	rodape.BackgroundTransparency = 1
-	rodape.Text = "By: VOID Santos7x"
-	rodape.TextColor3 = Color3.fromRGB(255, 255, 255)
-	rodape.Font = Enum.Font.GothamMedium
-	rodape.TextSize = 9
-	rodape.Parent = frame
-
-	local arrastandoSlider = nil
-	local arrastandoPainel = false
-	local offsetPainel = Vector2.zero
-
-	sliderSize.track.MouseButton1Down:Connect(function()
-		arrastandoSlider = sliderSize
-		arrastandoPainel = false
-		sliderSize.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
-	end)
-
-	sliderSpeed.track.MouseButton1Down:Connect(function()
-		arrastandoSlider = sliderSpeed
-		arrastandoPainel = false
-		sliderSpeed.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
-	end)
-
-	sliderJump.track.MouseButton1Down:Connect(function()
-		arrastandoSlider = sliderJump
-		arrastandoPainel = false
-		sliderJump.setValorPorPosicaoX(UserInputService:GetMouseLocation().X)
-	end)
-
-	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and not arrastandoSlider then
-			arrastandoPainel = true
-			offsetPainel = Vector2.new(
-				input.Position.X - frame.AbsolutePosition.X,
-				input.Position.Y - frame.AbsolutePosition.Y
-			)
+	fr.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 and not dragSl then
+			dragFr = true
+			offFr = Vector2.new(inp.Position.X - fr.AbsolutePosition.X, inp.Position.Y - fr.AbsolutePosition.Y)
 		end
 	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			if arrastandoSlider then
-				arrastandoSlider.setValorPorPosicaoX(input.Position.X)
-			elseif arrastandoPainel then
-				frame.Position = UDim2.new(
-					0,
-					input.Position.X - offsetPainel.X,
-					0,
-					input.Position.Y - offsetPainel.Y
-				)
-			end
+	UserInputService.InputChanged:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseMovement then
+			if dragSl then dragSl.setValorPorPosicaoX(inp.Position.X)
+			elseif dragFr then fr.Position = UDim2.new(0, inp.Position.X - offFr.X, 0, inp.Position.Y - offFr.Y) end
 		end
 	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			arrastandoSlider = nil
-			arrastandoPainel = false
-		end
+	UserInputService.InputEnded:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragSl, dragFr = nil, false end
 	end)
 
-	btnAuto.MouseButton1Click:Connect(function()
-		setEstado(not ativo)
-	end)
+	bAuto.MouseButton1Click:Connect(function() setLock(not S.ativo) end)
+	bLock.MouseButton1Click:Connect(function() S.lockOn = not S.lockOn; bLock.Text = S.lockOn and "Target Lock: ON" or "Target Lock: OFF"; bLock.BackgroundColor3 = S.lockOn and CFG.ROXO_ON or CFG.CINZA; if not S.lockOn then S.alvo = nil end end)
+	bPvp.MouseButton1Click:Connect(function() S.pvpLoop = not S.pvpLoop; bPvp.Text = S.pvpLoop and "PvP Focus Loop: ON" or "PvP Focus Loop: OFF"; bPvp.BackgroundColor3 = S.pvpLoop and CFG.ROXO_ON or CFG.CINZA; S.alvoPvp, S.alvo, S.tJanelaHit = nil, nil, 0; syncHitMarc() end)
+	bCost.MouseButton1Click:Connect(function() S.backCostas = not S.backCostas; bCost.Text = S.backCostas and "Back / Costas: ON" or "Back / Costas: OFF"; bCost.BackgroundColor3 = S.backCostas and CFG.ROXO_ON or CFG.CINZA end)
+	bGrabAssist.MouseButton1Click:Connect(function() S.grabAssist = not S.grabAssist; bGrabAssist.Text = S.grabAssist and "Grab (G): ON" or "Grab (G): OFF"; bGrabAssist.BackgroundColor3 = S.grabAssist and CFG.ROXO_ON or CFG.CINZA end)
+	bSpamGrab.MouseButton1Click:Connect(function() setSpamGrab(not S.spamGrab) end)
+	bRag.MouseButton1Click:Connect(function() S.antiRag = not S.antiRag; bRag.Text = S.antiRag and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF"; bRag.BackgroundColor3 = S.antiRag and CFG.ROXO_ON or CFG.CINZA end)
+	bGrab.MouseButton1Click:Connect(function() S.antiGrab = not S.antiGrab; bGrab.Text = S.antiGrab and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF"; bGrab.BackgroundColor3 = S.antiGrab and CFG.ROXO_ON or CFG.CINZA end)
+	bDtp.MouseButton1Click:Connect(function() S.deathTp = not S.deathTp; bDtp.Text = S.deathTp and "Death TP: ON" or "Death TP: OFF"; bDtp.BackgroundColor3 = S.deathTp and CFG.ROXO_ON or CFG.CINZA end)
+	bNs.MouseButton1Click:Connect(function() S.noSlow = not S.noSlow; bNs.Text = S.noSlow and "No Slow: ON" or "No Slow: OFF"; bNs.BackgroundColor3 = S.noSlow and CFG.ROXO_ON or CFG.CINZA end)
+	bKa.MouseButton1Click:Connect(function() setKa(not S.ka) end)
+	bFgt.MouseButton1Click:Connect(function() setFighting(not S.fighting) end)
+	bRstChar.MouseButton1Click:Connect(function() resetarPersonagem() end)
+	bHit.MouseButton1Click:Connect(function() S.hitOn = not S.hitOn; bHit.Text = S.hitOn and "Hitbox: ON" or "Hitbox: OFF"; bHit.BackgroundColor3 = S.hitOn and CFG.ROXO_ON or CFG.CINZA; syncHitMarc() end)
+	bVis.MouseButton1Click:Connect(function() S.hitVis = not S.hitVis; bVis.Text = S.hitVis and "Visível: Sim" or "Visível: Não"; bVis.BackgroundColor3 = S.hitVis and CFG.ROXO_ON or CFG.CINZA; syncHitMarc() end)
+	bSpd.MouseButton1Click:Connect(function() S.speedOn = not S.speedOn; bSpd.Text = S.speedOn and "Speed: ON" or "Speed: OFF"; bSpd.BackgroundColor3 = S.speedOn and CFG.ROXO_ON or CFG.CINZA; updMod() end)
+	bJmp.MouseButton1Click:Connect(function() S.jumpOn = not S.jumpOn; bJmp.Text = S.jumpOn and "Jump (Multi): ON" or "Jump (Multi): OFF"; bJmp.BackgroundColor3 = S.jumpOn and CFG.ROXO_ON or CFG.CINZA; aplJump() end)
+	bNa.MouseButton1Click:Connect(function() setNoAnim(not S.noAnim) end)
+	bHl.MouseButton1Click:Connect(function() S.hudLosango = not S.hudLosango; bHl.Text = S.hudLosango and "HUD Losango: ON" or "HUD Losango: OFF"; bHl.BackgroundColor3 = S.hudLosango and CFG.ROXO_ON or CFG.CINZA; if UI.hudGui then UI.hudGui.Enabled = S.hudLosango end end)
+	bHs.MouseButton1Click:Connect(function() S.hudStats = not S.hudStats; bHs.Text = S.hudStats and "FPS / MS: ON" or "FPS / MS: OFF"; bHs.BackgroundColor3 = S.hudStats and CFG.ROXO_ON or CFG.CINZA; if UI.stats then UI.stats.Visible = S.hudStats end end)
+	bIv.MouseButton1Click:Connect(function() setInv(not S.inv) end)
+	bEsp.MouseButton1Click:Connect(function() S.espOn = not S.espOn; bEsp.Text = S.espOn and "VOID ESP: ON" or "VOID ESP: OFF"; bEsp.BackgroundColor3 = S.espOn and CFG.ROXO_ON or CFG.CINZA; tEsp = 0; S.syncEsp(os.clock()) end)
+	bEspN.MouseButton1Click:Connect(function() S.espName = not S.espName; bEspN.Text = S.espName and "ESP Name: ON" or "ESP Name: OFF"; bEspN.BackgroundColor3 = S.espName and CFG.ROXO_ON or CFG.CINZA; tEsp = 0; S.syncEsp(os.clock()) end)
+	bEspH.MouseButton1Click:Connect(function() S.espHp = not S.espHp; bEspH.Text = S.espHp and "ESP Health: ON" or "ESP Health: OFF"; bEspH.BackgroundColor3 = S.espHp and CFG.ROXO_ON or CFG.CINZA; tEsp = 0; S.syncEsp(os.clock()) end)
+	bEspB.MouseButton1Click:Connect(function() S.espBody = not S.espBody; bEspB.Text = S.espBody and "ESP Body: ON" or "ESP Body: OFF"; bEspB.BackgroundColor3 = S.espBody and CFG.ROXO_ON or CFG.CINZA; tEsp = 0; S.syncEsp(os.clock()) end)
+	bOpt.MouseButton1Click:Connect(function() setOptFps(not S.boostFps); bOpt.Text = S.boostFps and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF"; bOpt.BackgroundColor3 = S.boostFps and CFG.ROXO_ON or CFG.CINZA end)
+	bRst.MouseButton1Click:Connect(function() fr.Position = CFG.POS_PAINEL end)
 
-	btnLock.MouseButton1Click:Connect(function()
-		targetLockHabilitadoNoPainel = not targetLockHabilitadoNoPainel
-		btnLock.Text = targetLockHabilitadoNoPainel and "Target Lock: ON" or "Target Lock: OFF"
-		btnLock.BackgroundColor3 = targetLockHabilitadoNoPainel and BOTAO_ROXO_ON or BOTAO_CINZA
-		if not targetLockHabilitadoNoPainel then
-			alvoAtual = nil
-		end
-	end)
-
-	btnBackCostas.MouseButton1Click:Connect(function()
-		backCostasAtivo = not backCostasAtivo
-		btnBackCostas.Text = backCostasAtivo and "Back / Costas: ON" or "Back / Costas: OFF"
-		btnBackCostas.BackgroundColor3 = backCostasAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnAntiRagdoll.MouseButton1Click:Connect(function()
-		antiRagdollAtivo = not antiRagdollAtivo
-		btnAntiRagdoll.Text = antiRagdollAtivo and "Anti-Ragdoll: ON" or "Anti-Ragdoll: OFF"
-		btnAntiRagdoll.BackgroundColor3 = antiRagdollAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnAntiGrabRag.MouseButton1Click:Connect(function()
-		antiGrabRagAtivo = not antiGrabRagAtivo
-		btnAntiGrabRag.Text = antiGrabRagAtivo and "Anti Grab Rag: ON" or "Anti Grab Rag: OFF"
-		btnAntiGrabRag.BackgroundColor3 = antiGrabRagAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnDeathTp.MouseButton1Click:Connect(function()
-		deathTpAtivo = not deathTpAtivo
-		btnDeathTp.Text = deathTpAtivo and "Death TP: ON" or "Death TP: OFF"
-		btnDeathTp.BackgroundColor3 = deathTpAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnNoSlow.MouseButton1Click:Connect(function()
-		noSlowAtivo = not noSlowAtivo
-		btnNoSlow.Text = noSlowAtivo and "No Slow: ON" or "No Slow: OFF"
-		btnNoSlow.BackgroundColor3 = noSlowAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnKillAura.MouseButton1Click:Connect(function()
-		setKillAuraEstado(not killAuraAtivo)
-	end)
-
-	btnHit.MouseButton1Click:Connect(function()
-		hitboxAtivo = not hitboxAtivo
-		btnHit.Text = hitboxAtivo and "Hitbox: ON" or "Hitbox: OFF"
-		btnHit.BackgroundColor3 = hitboxAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-		sincronizarHitboxEMarcadores()
-	end)
-
-	btnVis.MouseButton1Click:Connect(function()
-		hitboxVisivel = not hitboxVisivel
-		btnVis.Text = hitboxVisivel and "Visivel: Sim" or "Visivel: Nao"
-		btnVis.BackgroundColor3 = hitboxVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-		sincronizarHitboxEMarcadores()
-	end)
-
-	btnSpeed.MouseButton1Click:Connect(function()
-		speedCFrameAtivo = not speedCFrameAtivo
-		btnSpeed.Text = speedCFrameAtivo and "Speed: ON" or "Speed: OFF"
-		btnSpeed.BackgroundColor3 = speedCFrameAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-		atualizarSeletorModoSpeed()
-	end)
-
-	btnJumpMulti.MouseButton1Click:Connect(function()
-		jumpMultiAtivo = not jumpMultiAtivo
-		btnJumpMulti.Text = jumpMultiAtivo and "Jump (Multi): ON" or "Jump (Multi): OFF"
-		btnJumpMulti.BackgroundColor3 = jumpMultiAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-		aplicarJumpMultiplicador()
-	end)
-
-	btnNoAnim.MouseButton1Click:Connect(function()
-		noAnimationAtivo = not noAnimationAtivo
-		btnNoAnim.Text = noAnimationAtivo and "No Animation: ON" or "No Animation: OFF"
-		btnNoAnim.BackgroundColor3 = noAnimationAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-		sincronizarNoAnimation()
-	end)
-
-	btnHudLosango.MouseButton1Click:Connect(function()
-		hudLosangoVisivel = not hudLosangoVisivel
-		btnHudLosango.Text = hudLosangoVisivel and "HUD Losango: ON" or "HUD Losango: OFF"
-		btnHudLosango.BackgroundColor3 = hudLosangoVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-		if losangoGuiRoot then
-			losangoGuiRoot.Enabled = hudLosangoVisivel
-		end
-	end)
-
-	btnHudStats.MouseButton1Click:Connect(function()
-		hudStatsVisivel = not hudStatsVisivel
-		btnHudStats.Text = hudStatsVisivel and "FPS / MS: ON" or "FPS / MS: OFF"
-		btnHudStats.BackgroundColor3 = hudStatsVisivel and BOTAO_ROXO_ON or BOTAO_CINZA
-		if statsLabelUI then
-			statsLabelUI.Visible = hudStatsVisivel
-		end
-	end)
-
-	btnOtimizar.MouseButton1Click:Connect(function()
-		aplicarOtimizacaoFpsERede(not boostFpsRedeAtivo)
-		btnOtimizar.Text = boostFpsRedeAtivo and "Otimizar FPS / Rede: ON" or "Otimizar FPS / Rede: OFF"
-		btnOtimizar.BackgroundColor3 = boostFpsRedeAtivo and BOTAO_ROXO_ON or BOTAO_CINZA
-	end)
-
-	btnResetPos.MouseButton1Click:Connect(function()
-		frame.Position = POSICAO_PAINEL_PADRAO
-	end)
-
-	selecionarAba("Combat")
-	painelFrameUI = frame
-	btnAutoClickUI = btnAuto
-	btnKillAuraUI = btnKillAura
-	atualizarKillAuraUI(killAuraAtivo)
+	selAba("Combat")
+	UI.painel, UI.btnAuto, UI.btnKa, UI.btnInv, UI.btnSpamGrab, UI.btnFight, UI.btnNoAnim = fr, bAuto, bKa, bIv, bSpamGrab, bFgt, bNa
+	updKaUI(S.ka)
+	updInvUI(S.inv)
+	updFightUI()
 end
 
-criarPainelHitbox()
-atualizarVisual(ativo)
-sincronizarNoAnimation()
+criarPainel()
+updLockUI(S.ativo)
+syncNoAnim()
 
-local function distanciaPara(meuRoot, alvoRoot)
-	if not meuRoot or not alvoRoot or not alvoRoot.Parent then
-		return math.huge
+local function aplFoco()
+	if getgenv and getgenv().UniversalTargetLockActive ~= nil then S.ativo = getgenv().UniversalTargetLockActive end
+	updLockUI(S.ativo)
+	if not S.ativo or not S.lockOn or S.inv then S.alvo = nil; return end
+	local _, mr = getCR(LocalPlayer)
+	if not mr then return end
+	if S.pvpLoop then
+		local rl, _, ok = getPvpAlvo(mr)
+		if rl and ok then S.alvo = rl else S.alvo = nil; return end
+	else
+		local mp, dm = maisProx(mr, CFG.DIST_MAX)
+		local da = (S.alvo and S.alvo.Parent) and (S.alvo.Position - mr.Position).Magnitude or math.huge
+		if not mp then S.alvo = nil; return
+		elseif not S.alvo or da > CFG.DIST_MAX then S.alvo = mp
+		elseif mp ~= S.alvo and (da - dm) > CFG.MARGEM_TROCA then S.alvo = mp end
 	end
-	return (alvoRoot.Position - meuRoot.Position).Magnitude
-end
-
-local function acharMaisProximo(meuRoot)
-	return acharMaisProximoGeral(meuRoot, DISTANCIA_MAXIMA)
-end
-
-local function aplicarFocoNoAlvo()
-	if getgenv and getgenv().UniversalTargetLockActive ~= nil then
-		ativo = getgenv().UniversalTargetLockActive
-	end
-	atualizarVisual(ativo)
-
-	if not ativo or not targetLockHabilitadoNoPainel then
-		alvoAtual = nil
-		return
-	end
-
-	local _, meuRoot = getCharAndRoot(LocalPlayer)
-	if not meuRoot then return end
-
-	local maisProximo, distMaisProximo = acharMaisProximo(meuRoot)
-	local distAtual = distanciaPara(meuRoot, alvoAtual)
-
-	if not maisProximo then
-		alvoAtual = nil
-		return
-	elseif not alvoAtual or distAtual > DISTANCIA_MAXIMA then
-		alvoAtual = maisProximo
-	elseif maisProximo ~= alvoAtual and (distAtual - distMaisProximo) > MARGEM_TROCA then
-		alvoAtual = maisProximo
-	end
-
-	if not alvoAtual or not alvoAtual.Parent then return end
-
-	local meuPos = meuRoot.Position
-	local alvoPos = alvoAtual.Position
-	local dx = alvoPos.X - meuPos.X
-	local dz = alvoPos.Z - meuPos.Z
-
-	if not ORBITAR and (dx * dx + dz * dz) > 0.0025 then
-		local _, yawAtual, _ = meuRoot.CFrame:ToEulerAnglesYXZ()
-		local yawDesejado = math.atan2(-dx, -dz)
-		local diff = normalizarAngulo(yawDesejado - yawAtual)
-		local fator = math.clamp(FIRMEZA_GIRO, 0.05, 1)
-		local novoYaw = yawAtual + (diff * fator)
-
-		meuRoot.CFrame = CFrame.new(meuPos) * CFrame.fromEulerAnglesYXZ(0, novoYaw, 0)
+	if not S.alvo or not S.alvo.Parent then return end
+	local dx, dz = S.alvo.Position.X - mr.Position.X, S.alvo.Position.Z - mr.Position.Z
+	if not CFG.ORBITAR and (dx * dx + dz * dz) > 0.0025 then
+		local _, ya, _ = mr.CFrame:ToEulerAnglesYXZ()
+		mr.CFrame = CFrame.new(mr.Position) * CFrame.fromEulerAnglesYXZ(0, ya + (normAng(math.atan2(-dx, -dz) - ya) * math.clamp(CFG.FIRMEZA_GIRO, 0.05, 1)), 0)
 	end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == TECLA_ESPECIAL then
-		ultimoEspecialTick = os.clock()
-	elseif input.KeyCode == TECLA_KILL_AURA then
-		setKillAuraEstado(not killAuraAtivo)
-	elseif input.KeyCode == TECLA_ATALHO then
-		setEstado(not ativo)
-	elseif input.KeyCode == TECLA_PAINEL and painelFrameUI then
-		painelFrameUI.Visible = not painelFrameUI.Visible
+UserInputService.InputBegan:Connect(function(inp, gp)
+	if gp or UserInputService:GetFocusedTextBox() then return end
+	if inp.KeyCode == CFG.KEY_ESPECIAL then
+		tEsp = os.clock()
+		aplGrabAssist(true, true)
+	elseif inp.KeyCode == CFG.KEY_KA then
+		setKa(not S.ka)
+	elseif inp.KeyCode == CFG.KEY_ATALHO then
+		setLock(not S.ativo)
+	elseif inp.KeyCode == CFG.KEY_PAINEL and UI.painel then
+		UI.painel.Visible = not UI.painel.Visible
+	elseif (inp.KeyCode == CFG.KEY_CANCEL_PVP or inp.UserInputType == Enum.UserInputType.MouseButton2) and S.pvpLoop and S.alvoPvp then
+		cancPvp()
+	elseif inp.UserInputType == Enum.UserInputType.MouseButton1 and not ignHit and S.pvpLoop and not S.alvoPvp then
+		S.tJanelaHit = os.clock() + 0.35
+		regPvpHit()
+		task.defer(regPvpHit)
 	end
 end)
 
-pcall(function()
-	RunService:UnbindFromRenderStep("UniversalCharTargetLock")
-end)
+pcall(function() RunService:UnbindFromRenderStep("UniversalCharTargetLock") end)
 
-local acumuladorFps = 0
-local framesContados = 0
-local ultimoFpsExibido = nil
-local ultimoPingExibido = nil
-
+local accFps, cntFps, uFps, uPing = 0, 0, nil, nil
 RunService.RenderStepped:Connect(function(dt)
-	aplicarFocoNoAlvo()
-	restaurarPulsoMiraKillAura()
-
-	if hudLosangoVisivel and hudStatsVisivel and statsLabelUI then
-		acumuladorFps += dt
-		framesContados += 1
-		if acumuladorFps >= 0.35 then
-			local fpsAtual = math.floor((framesContados / acumuladorFps) + 0.5)
-			local pingAtual = lerPingMs()
-			if fpsAtual ~= ultimoFpsExibido or pingAtual ~= ultimoPingExibido then
-				ultimoFpsExibido = fpsAtual
-				ultimoPingExibido = pingAtual
-				local textoPing = pingAtual and (tostring(pingAtual) .. " MS") or "-- MS"
-				statsLabelUI.Text = "FPS: " .. tostring(fpsAtual) .. " | " .. textoPing
+	local now = os.clock()
+	if S.pvpLoop and not S.alvoPvp and now <= S.tJanelaHit then regPvpHit() end
+	aplFoco()
+	restPulso()
+	if S.grabAssist and now <= S.tJanelaGrab then aplGrabAssist(false, true) end
+	if S.inv then updInv(0, now) end
+	S.syncEsp(now)
+	if S.hudLosango and S.hudStats and UI.stats then
+		accFps += dt; cntFps += 1
+		if accFps >= 0.35 then
+			local fa = math.floor((cntFps / accFps) + 0.5)
+			local pa = lerPing()
+			if fa ~= uFps or pa ~= uPing then
+				uFps, uPing = fa, pa
+				UI.stats.Text = "FPS: " .. tostring(fa) .. " | " .. (pa and (tostring(pa) .. " MS") or "-- MS")
 			end
-			acumuladorFps = 0
-			framesContados = 0
+			accFps, cntFps = 0, 0
 		end
 	end
+end)
+
+RunService.Stepped:Connect(function()
+	local now = os.clock()
+	if S.grabAssist and now <= S.tJanelaGrab then aplGrabAssist(false, true) end
+	if S.inv then local c, r, h = getCR(LocalPlayer); if c and r then travarInv(c, r, h) end end
 end)
 
 RunService.Heartbeat:Connect(function(dt)
-	local agora = os.clock()
-	aplicarBackCostas()
-	aplicarNoSlow()
-	aplicarJumpMultiplicador()
-	aplicarAntiRagdoll()
-	aplicarAntiGrabRag()
-	aplicarSpeedMultiModo(dt)
-
-	local killAuraAtacou = processarKillAuraFrame(agora)
-	processarAutoClickFrame(agora, killAuraAtacou)
+	local now = os.clock()
+	aplCostas(); aplNoSlow(); aplJump(); aplAntiRag(); aplAntiGrab(); aplSpeed(dt)
+	local kaAtk = procKa(now)
+	procClk(now, kaAtk)
+	updInv(dt, now)
 end)
 
 task.spawn(function()
 	while true do
-		pcall(sincronizarHitboxEMarcadores)
-		task.wait(0.35)
+		pcall(syncHitMarc)
+		task.wait(0.5)
 	end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
-	if alvoKillAuraPlayer == plr then
-		alvoKillAuraPlayer = nil
-	end
-	limparMarcador(plr)
+	if S.alvoKa == plr then S.alvoKa = nil end
+	if S.alvoPvp == plr then S.alvoPvp = nil end
+	if S.alvoGrabTravado == plr then S.alvoGrabTravado = nil end
+	limpMarc(plr)
+	S.limpEspPlr(plr)
 end)
 
-print("[The VOID Painel] Kill Aura sincronizado por Heartbeat com trava persistente em alvo caido (knockdown)!")
+print("[The VOID Painel] Varredura concluída: atalhos Q/E, botões, Combate ON/OFF e Resetar Personagem corrigidos.")
