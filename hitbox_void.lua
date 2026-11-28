@@ -96,7 +96,7 @@ local CFG = {
 	PAINEL_W = 354,
 	PAINEL_H = 626,
 	POS_PAINEL = UDim2.new(1, -372, 1, -640),
-	ESP_MAX_DIST = 350,
+	ESP_MAX_DIST = 9999,
 }
 
 if getgenv then
